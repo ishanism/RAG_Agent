@@ -1,0 +1,9 @@
+Title: Generate commit message using Ollama
+
+Description: This commit adds a new Python script `generate_commit_message.py` that utilizes the Ollama API to generate commit messages based on user prompts. The script takes three arguments: the host of the Ollama server, the name of the model, and the path to a file containing the prompt. It reads the prompt from the file, sends it to the specified model using the Ollama client, and prints the generated commit message.
+
+# ----------------------
+# AI-generated commit message above.
+# Edit if needed, remove this and below lines.
+#
+# Lines starting with '#' will be ignored.
