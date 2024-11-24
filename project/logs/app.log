@@ -61,7 +61,7 @@
 </head>
 <body>
     <h1>Python Script Runner</h1>
-    <p>Scripts: [&#39;logger.py&#39;, &#39;__init__.py&#39;]</p> <!-- Debugging line to show scripts variable -->
+    <p>Scripts: [&#39;logger.py&12312#39;, &#39;__init__.py&#39;]</p> <!-- Debugging line to show scripts variable -->
     <ul>
         
         <li><a href="/run/logger.py">logger.py</a></li>
