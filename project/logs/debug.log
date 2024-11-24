@@ -1,0 +1,54 @@
+2024-11-24 22:40:00,619 - debug - DEBUG - Starting script discovery
+2024-11-24 22:40:00,620 - debug - DEBUG - Found script: tools\ai_runners\live_caption\main.py
+2024-11-24 22:40:00,620 - debug - DEBUG - Found script: tools\ai_runners\transcribe_audio\main.py
+2024-11-24 22:40:00,620 - debug - DEBUG - Found script: tools\file_management\create_file\main.py
+2024-11-24 22:40:00,620 - debug - DEBUG - Found script: tools\file_management\delete_file\main.py
+2024-11-24 22:40:00,621 - debug - DEBUG - Found script: tools\file_management\rename_file\main.py
+2024-11-24 22:40:00,621 - debug - DEBUG - Final script tree: {'ai_runners': ['tools\\ai_runners\\live_caption\\main.py', 'tools\\ai_runners\\transcribe_audio\\main.py'], 'file_management': ['tools\\file_management\\create_file\\main.py', 'tools\\file_management\\delete_file\\main.py', 'tools\\file_management\\rename_file\\main.py']}
+2024-11-24 22:40:14,524 - debug - DEBUG - Attempting to run script: toolsai_runnerslive_captionmain.py
+2024-11-24 22:41:48,269 - debug - DEBUG - Starting script discovery
+2024-11-24 22:41:48,270 - debug - DEBUG - Found script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:41:48,270 - debug - DEBUG - Found script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:41:48,270 - debug - DEBUG - Found script: tools/file_management/create_file/main.py
+2024-11-24 22:41:48,270 - debug - DEBUG - Found script: tools/file_management/delete_file/main.py
+2024-11-24 22:41:48,270 - debug - DEBUG - Found script: tools/file_management/rename_file/main.py
+2024-11-24 22:41:48,271 - debug - DEBUG - Final script tree: {'ai_runners': ['tools/ai_runners/live_caption/main.py', 'tools/ai_runners/transcribe_audio/main.py'], 'file_management': ['tools/file_management/create_file/main.py', 'tools/file_management/delete_file/main.py', 'tools/file_management/rename_file/main.py']}
+2024-11-24 22:41:53,184 - debug - DEBUG - Attempting to run script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:41:53,245 - debug - DEBUG - Script output: Generating live captions...
+
+2024-11-24 22:41:57,153 - debug - DEBUG - Attempting to run script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:41:57,227 - debug - DEBUG - Script output: Transcribing audio...
+
+2024-11-24 22:42:32,547 - debug - DEBUG - Starting script discovery
+2024-11-24 22:42:32,548 - debug - DEBUG - Found script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:32,548 - debug - DEBUG - Found script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:32,548 - debug - DEBUG - Found script: tools/file_management/create_file/main.py
+2024-11-24 22:42:32,548 - debug - DEBUG - Found script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:32,548 - debug - DEBUG - Found script: tools/file_management/rename_file/main.py
+2024-11-24 22:42:32,548 - debug - DEBUG - Final script tree: {'ai_runners': ['tools/ai_runners/live_caption/main.py', 'tools/ai_runners/transcribe_audio/main.py'], 'file_management': ['tools/file_management/create_file/main.py', 'tools/file_management/delete_file/main.py', 'tools/file_management/rename_file/main.py']}
+2024-11-24 22:42:33,326 - debug - DEBUG - Starting script discovery
+2024-11-24 22:42:33,326 - debug - DEBUG - Found script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:33,327 - debug - DEBUG - Found script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:33,327 - debug - DEBUG - Found script: tools/file_management/create_file/main.py
+2024-11-24 22:42:33,327 - debug - DEBUG - Found script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:33,327 - debug - DEBUG - Found script: tools/file_management/rename_file/main.py
+2024-11-24 22:42:33,327 - debug - DEBUG - Final script tree: {'ai_runners': ['tools/ai_runners/live_caption/main.py', 'tools/ai_runners/transcribe_audio/main.py'], 'file_management': ['tools/file_management/create_file/main.py', 'tools/file_management/delete_file/main.py', 'tools/file_management/rename_file/main.py']}
+2024-11-24 22:42:33,574 - debug - DEBUG - Starting script discovery
+2024-11-24 22:42:33,575 - debug - DEBUG - Found script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:33,575 - debug - DEBUG - Found script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:33,575 - debug - DEBUG - Found script: tools/file_management/create_file/main.py
+2024-11-24 22:42:33,576 - debug - DEBUG - Found script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:33,576 - debug - DEBUG - Found script: tools/file_management/rename_file/main.py
+2024-11-24 22:42:33,576 - debug - DEBUG - Final script tree: {'ai_runners': ['tools/ai_runners/live_caption/main.py', 'tools/ai_runners/transcribe_audio/main.py'], 'file_management': ['tools/file_management/create_file/main.py', 'tools/file_management/delete_file/main.py', 'tools/file_management/rename_file/main.py']}
+2024-11-24 22:42:34,933 - debug - DEBUG - Attempting to run script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:34,988 - debug - DEBUG - Script output: Generating live captions...
+
+2024-11-24 22:42:36,149 - debug - DEBUG - Attempting to run script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:36,211 - debug - DEBUG - Script output: Transcribing audio...
+
+2024-11-24 22:42:37,364 - debug - DEBUG - Attempting to run script: tools/file_management/create_file/main.py
+2024-11-24 22:42:37,431 - debug - DEBUG - Script output: 
+2024-11-24 22:42:38,267 - debug - DEBUG - Attempting to run script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:38,338 - debug - DEBUG - Script output: 
+2024-11-24 22:42:39,463 - debug - DEBUG - Attempting to run script: tools/file_management/rename_file/main.py
+2024-11-24 22:42:39,529 - debug - DEBUG - Script output: 

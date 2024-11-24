@@ -1,0 +1,6 @@
+2024-11-24 22:40:14,526 - warning - WARNING - Attempted to run non-existent script: toolsai_runnerslive_captionmain.py
+2024-11-24 22:42:37,431 - warning - WARNING - Script tools/file_management/create_file/main.py produced errors: Traceback (most recent call last):
+  File "D:\Projects\AI\RAG_Agent\project\tools\file_management\create_file\main.py", line 2, in <module>
+    from logger import debug_logger, info_logger, warning_logger, error_logger
+ModuleNotFoundError: No module named 'logger'
+

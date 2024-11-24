@@ -1,0 +1,47 @@
+2024-11-24 22:39:47,464 - info - INFO - Starting Flask application
+2024-11-24 22:39:47,764 - info - INFO - Starting Flask application
+2024-11-24 22:40:00,620 - info - INFO - Added script tools\ai_runners\live_caption\main.py to category ai_runners
+2024-11-24 22:40:00,620 - info - INFO - Added script tools\ai_runners\transcribe_audio\main.py to category ai_runners
+2024-11-24 22:40:00,620 - info - INFO - Added script tools\file_management\create_file\main.py to category file_management
+2024-11-24 22:40:00,620 - info - INFO - Added script tools\file_management\delete_file\main.py to category file_management
+2024-11-24 22:40:00,621 - info - INFO - Added script tools\file_management\rename_file\main.py to category file_management
+2024-11-24 22:40:00,621 - info - INFO - Rendering template 'index.html'
+2024-11-24 22:41:46,694 - info - INFO - Starting Flask application
+2024-11-24 22:41:48,270 - info - INFO - Added script tools/ai_runners/live_caption/main.py to category ai_runners
+2024-11-24 22:41:48,270 - info - INFO - Added script tools/ai_runners/transcribe_audio/main.py to category ai_runners
+2024-11-24 22:41:48,270 - info - INFO - Added script tools/file_management/create_file/main.py to category file_management
+2024-11-24 22:41:48,270 - info - INFO - Added script tools/file_management/delete_file/main.py to category file_management
+2024-11-24 22:41:48,271 - info - INFO - Added script tools/file_management/rename_file/main.py to category file_management
+2024-11-24 22:41:48,271 - info - INFO - Rendering template 'index.html'
+2024-11-24 22:41:53,184 - info - INFO - Running script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:41:53,245 - info - INFO - Successfully ran script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:41:57,153 - info - INFO - Running script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:41:57,227 - info - INFO - Successfully ran script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:32,548 - info - INFO - Added script tools/ai_runners/live_caption/main.py to category ai_runners
+2024-11-24 22:42:32,548 - info - INFO - Added script tools/ai_runners/transcribe_audio/main.py to category ai_runners
+2024-11-24 22:42:32,548 - info - INFO - Added script tools/file_management/create_file/main.py to category file_management
+2024-11-24 22:42:32,548 - info - INFO - Added script tools/file_management/delete_file/main.py to category file_management
+2024-11-24 22:42:32,548 - info - INFO - Added script tools/file_management/rename_file/main.py to category file_management
+2024-11-24 22:42:32,548 - info - INFO - Rendering template 'index.html'
+2024-11-24 22:42:33,327 - info - INFO - Added script tools/ai_runners/live_caption/main.py to category ai_runners
+2024-11-24 22:42:33,327 - info - INFO - Added script tools/ai_runners/transcribe_audio/main.py to category ai_runners
+2024-11-24 22:42:33,327 - info - INFO - Added script tools/file_management/create_file/main.py to category file_management
+2024-11-24 22:42:33,327 - info - INFO - Added script tools/file_management/delete_file/main.py to category file_management
+2024-11-24 22:42:33,327 - info - INFO - Added script tools/file_management/rename_file/main.py to category file_management
+2024-11-24 22:42:33,327 - info - INFO - Rendering template 'index.html'
+2024-11-24 22:42:33,575 - info - INFO - Added script tools/ai_runners/live_caption/main.py to category ai_runners
+2024-11-24 22:42:33,575 - info - INFO - Added script tools/ai_runners/transcribe_audio/main.py to category ai_runners
+2024-11-24 22:42:33,575 - info - INFO - Added script tools/file_management/create_file/main.py to category file_management
+2024-11-24 22:42:33,576 - info - INFO - Added script tools/file_management/delete_file/main.py to category file_management
+2024-11-24 22:42:33,576 - info - INFO - Added script tools/file_management/rename_file/main.py to category file_management
+2024-11-24 22:42:33,576 - info - INFO - Rendering template 'index.html'
+2024-11-24 22:42:34,933 - info - INFO - Running script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:34,988 - info - INFO - Successfully ran script: tools/ai_runners/live_caption/main.py
+2024-11-24 22:42:36,149 - info - INFO - Running script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:36,211 - info - INFO - Successfully ran script: tools/ai_runners/transcribe_audio/main.py
+2024-11-24 22:42:37,364 - info - INFO - Running script: tools/file_management/create_file/main.py
+2024-11-24 22:42:37,431 - info - INFO - Successfully ran script: tools/file_management/create_file/main.py
+2024-11-24 22:42:38,267 - info - INFO - Running script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:38,338 - info - INFO - Successfully ran script: tools/file_management/delete_file/main.py
+2024-11-24 22:42:39,463 - info - INFO - Running script: tools/file_management/rename_file/main.py
+2024-11-24 22:42:39,529 - info - INFO - Successfully ran script: tools/file_management/rename_file/main.py

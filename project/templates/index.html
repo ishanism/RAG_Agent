@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Script Runner</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 300px;
+            background-color: #f5f5f5;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .category {
+            margin: 20px 0;
+        }
+        .category h2 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        .script-list {
+            margin-left: 20px;
+        }
+        .script-item {
+            margin: 5px 0;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        #output {
+            background-color: #f8f8f8;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h1>Script Runner</h1>
+        {% for category, scripts in script_tree.items() %}
+        <div class="category">
+            <h2>{{ category.replace('_', ' ').title() }}</h2>
+            <div class="script-list">
+                {% for script in scripts %}
+                <div class="script-item">
+                    <a onclick="runScript('{{ script }}')">
+                        {% set parts = script.split('/') %}
+                        {{ parts[-2].replace('_', ' ').title() }}
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="main-content">
+        <h2>Output</h2>
+        <div id="output">
+            <p>Select a script to run...</p>
+        </div>
+    </div>
+
+    <script>
+        async function runScript(script) {
+            try {
+                // Ensure the script path is properly encoded for URLs
+                const encodedScript = encodeURIComponent(script);
+                const response = await fetch(`/run/${encodedScript}`);
+                const result = await response.text();
+                document.getElementById('output').innerHTML = result;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<pre>Error: ${error}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
