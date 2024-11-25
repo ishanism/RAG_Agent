@@ -1,1 +1,7 @@
 logs/app.log
+__pycache__/
+*__pycache__
+.__pycache__
+*.pyc
+*.pyo
+**.pyc

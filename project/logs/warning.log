@@ -4,3 +4,18 @@
     from logger import debug_logger, info_logger, warning_logger, error_logger
 ModuleNotFoundError: No module named 'logger'
 
+2024-11-25 01:21:26,148 - warning - WARNING - Script tools/file_management/create_file/main.py produced errors: Traceback (most recent call last):
+  File "D:\Projects\AI\RAG_Agent\project\tools\file_management\create_file\main.py", line 2, in <module>
+    from logger import debug_logger, info_logger, warning_logger, error_logger
+ModuleNotFoundError: No module named 'logger'
+
+2024-11-25 02:13:45,019 - warning - WARNING - Script tools/ai_runners/live_caption/main.py produced errors: Traceback (most recent call last):
+  File "D:\Projects\AI\RAG_Agent\project\tools\ai_runners\live_caption\main.py", line 1, in <module>
+    from base_agent import BaseAgent
+ModuleNotFoundError: No module named 'base_agent'
+
+2024-11-25 02:13:52,054 - warning - WARNING - Script tools/file_management/create_file/main.py produced errors: Traceback (most recent call last):
+  File "D:\Projects\AI\RAG_Agent\project\tools\file_management\create_file\main.py", line 2, in <module>
+    from logger import debug_logger, info_logger, warning_logger, error_logger
+ModuleNotFoundError: No module named 'logger'
+

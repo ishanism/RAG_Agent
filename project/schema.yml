@@ -1,0 +1,140 @@
+schemas:
+  TranscribeAudioAgent:
+    input:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          description: "Audio input device ID"
+        file_path:
+          type: string
+          description: "Path to audio file for transcription (optional)"
+        sample_rate:
+          type: integer
+          default: 16000
+          description: "Audio sample rate in Hz"
+      required: ["device_id"]
+    output:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              name:
+                type: string
+              channels:
+                type: integer
+              sample_rate:
+                type: integer
+        transcription:
+          type: string
+          description: "Transcribed text"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  LiveCaptionAgent:
+    input:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          description: "Audio input device ID"
+        language:
+          type: string
+          default: "en"
+          description: "Caption language"
+      required: ["device_id"]
+    output:
+      type: object
+      properties:
+        caption:
+          type: string
+          description: "Real-time caption text"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  # Tool schemas
+  AudioDeviceTool:
+    input:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: ["list", "select", "info"]
+          description: "Operation to perform with audio devices"
+        device_id:
+          type: integer
+          description: "Device ID for select/info operations"
+      required: ["operation"]
+    output:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              name:
+                type: string
+              channels:
+                type: integer
+              sample_rate:
+                type: integer
+        selected_device:
+          type: object
+          properties:
+            index:
+              type: integer
+            name:
+              type: string
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  AudioProcessingTool:
+    input:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: ["normalize", "noise_reduction", "trim_silence"]
+        audio_data:
+          type: string
+          description: "Base64 encoded audio data"
+        parameters:
+          type: object
+          properties:
+            target_db:
+              type: number
+            noise_threshold:
+              type: number
+      required: ["operation", "audio_data"]
+    output:
+      type: object
+      properties:
+        processed_audio:
+          type: string
+          description: "Base64 encoded processed audio data"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]

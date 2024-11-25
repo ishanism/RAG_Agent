@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Script Runner</title>
+    <title>Agent Dashboard</title>
     <style>
         body {
             margin: 0;
@@ -51,6 +51,15 @@
             border-radius: 5px;
             border: 1px solid #ddd;
         }
+        .card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 5px;
+        }
+        .section {
+            margin: 20px;
+        }
     </style>
 </head>
 <body>
@@ -77,6 +86,33 @@
         <div id="output">
             <p>Select a script to run...</p>
         </div>
+    </div>
+
+    <div class="section">
+        <h2>Available Agents</h2>
+        {% for agent_name, agent in agents.items() %}
+        <div class="card">
+            <h3>{{ agent.name }}</h3>
+            <p>{{ agent.description }}</p>
+            <p><strong>Type:</strong> {{ agent_name }}</p>
+            <form action="{{ url_for('run_agent', agent_name=agent_name) }}" method="post">
+                <button type="submit">Run Agent</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="section">
+        <h2>Available Scripts</h2>
+        {% for category, scripts in script_tree.items() %}
+        <h3>{{ category }}</h3>
+        {% for script in scripts %}
+        <div class="card">
+            <p>{{ script }}</p>
+            <a href="{{ url_for('run_script', script=script) }}">Run Script</a>
+        </div>
+        {% endfor %}
+        {% endfor %}
     </div>
 
     <script>
