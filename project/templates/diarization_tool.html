@@ -1,0 +1,210 @@
+{% extends "base_tool.html" %} {% block extra_styles %}
+<style>
+    .upload-container {
+        border: 2px dashed #ccc;
+        padding: 20px;
+        text-align: center;
+        border-radius: 5px;
+        background: #f9f9f9;
+        margin-bottom: 20px;
+    }
+    .upload-container.dragging {
+        background: #e1f5fe;
+        border-color: #03a9f4;
+    }
+    .progress-container {
+        margin: 10px 0;
+        display: none;
+    }
+    .progress-bar {
+        height: 4px;
+        background: #03a9f4;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+    .diarization-result {
+        font-family: sans-serif;
+        line-height: 1.5;
+    }
+    .segment {
+        margin: 10px 0;
+        padding: 5px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .segment small {
+        color: #666;
+        margin-left: 10px;
+    }
+</style>
+{% endblock %} {% block input_content %}
+<div class="upload-container" id="dropZone">
+    <form id="diarizeForm">
+        <div>
+            <label for="audioFile">Select or drag audio file here</label>
+            <input
+                type="file"
+                id="audioFile"
+                name="audio"
+                accept="audio/*"
+                required
+            />
+        </div>
+        <div style="margin-top: 10px">
+            <button type="submit" id="submitBtn">Process Audio</button>
+        </div>
+    </form>
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar"></div>
+        <div id="progressText">Uploading: 0%</div>
+    </div>
+</div>
+{% endblock %} 
+{% block extra_scripts %} </script>
+
+<script>
+    const dropZone = document.getElementById("dropZone");
+    const form = document.getElementById("diarizeForm");
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressText = document.getElementById("progressText");
+    const resultArea = document.getElementById("result");
+
+    // Drag and drop handling
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, () =>
+            dropZone.classList.add("dragging")
+        );
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, () =>
+            dropZone.classList.remove("dragging")
+        );
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const file = dt.files[0];
+        document.getElementById("audioFile").files = dt.files;
+    });
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const audioFile = document.getElementById("audioFile").files[0];
+        const submitBtn = document.getElementById("submitBtn");
+
+        if (!audioFile) {
+            logToConsole("Please select an audio file", "error");
+            return;
+        }
+
+        // Add file size check
+        if (audioFile.size === 0) {
+            logToConsole("File is empty", "error");
+            return;
+        }
+
+        // Disable form while processing
+        submitBtn.disabled = true;
+        logToConsole("Starting audio upload...", "info");
+        resultArea.textContent = "Uploading...";
+        progressContainer.style.display = "block";
+        progressBar.style.width = "0%";
+
+        try {
+            const formData = new FormData();
+            formData.append("audio", audioFile);
+
+            const xhr = new XMLHttpRequest();
+
+            // Setup upload progress monitoring
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percent + "%";
+                    progressText.textContent = `Uploading: ${Math.round(
+                        percent
+                    )}%`;
+                }
+            };
+
+            // Handle response
+            xhr.onload = async () => {
+                progressContainer.style.display = "none";
+                submitBtn.disabled = false;
+
+                try {
+                    if (xhr.status !== 200) {
+                        throw new Error(`Server returned status ${xhr.status}`);
+                    }
+                    
+                    const data = JSON.parse(xhr.responseText);
+                    logToConsole("Received response from server", "info");
+
+                    if (data.status === "error") {
+                        logToConsole(`Error: ${data.message}`, "error");
+                        resultArea.textContent = `Error: ${data.message}`;
+                    } else {
+                        logToConsole("Successfully processed audio", "success");
+                        resultArea.innerHTML = formatDiarizationResult(data);
+                    }
+                } catch (err) {
+                    logToConsole(`Error: ${err.message}`, "error");
+                    resultArea.textContent = `Error: ${err.message}`;
+                }
+            };
+
+            // Handle network errors
+            xhr.onerror = () => {
+                progressContainer.style.display = "none";
+                submitBtn.disabled = false;
+                logToConsole("Network error occurred", "error");
+                resultArea.textContent = "Error: Network error occurred";
+            };
+
+            // Send the request
+            xhr.open("POST", "/diarize");
+            xhr.send(formData);
+        } catch (err) {
+            progressContainer.style.display = "none";
+            submitBtn.disabled = false;
+            logToConsole(`Error: ${err.message}`, "error");
+            resultArea.textContent = `Error: ${err.message}`;
+        }
+    });
+
+    function formatDiarizationResult(data) {
+        if (!data.segments) return JSON.stringify(data, null, 2);
+
+        let html = '<div class="diarization-result">';
+        data.segments.forEach((segment) => {
+            html += `
+            <div class="segment">
+                <strong>Speaker ${segment.speaker}:</strong>
+                <span>${segment.text}</span>
+                <small>(${formatTime(segment.start)} - ${formatTime(
+                segment.end
+            )})</small>
+            </div>
+        `;
+        });
+        html += "</div>";
+        return html;
+    }
+
+    function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes}:${secs.toString().padStart(2, "0")}`;
+    }
+</script>
+{% endblock %}

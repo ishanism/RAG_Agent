@@ -1,2 +1,15 @@
 pip install --quiet -U langchain langchain_community tiktoken langchain-nomic "nomic[local]" langchain-ollama scikit-learn langgraph tavily-python bs4 
 pip install langfuse
+
+# Speaker Diarization Dependencies
+pip install git+https://github.com/m-bain/whisperx.git
+pip install torch torchaudio
+pip install pyannote.audio==3.1.1
+
+# Steps taken:
+1. Created SpeakerDiarizationAgent in tools/ai_runners/speaker_diarization
+2. Added file upload form to index.html
+3. Created /diarize endpoint in main.py
+4. Added CUDA/CPU support with automatic device selection
+5. Set up file upload handling with security measures
+6. Implemented memory management for GPU resources

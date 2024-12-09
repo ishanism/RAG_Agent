@@ -5,3 +5,6 @@
 .gitmessage
 error.log
 */*.log
+
+!templates/
+!templates/*

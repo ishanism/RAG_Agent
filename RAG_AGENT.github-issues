@@ -1,0 +1,27 @@
+[
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$git_repo=repo:ishanism/RAG_Agent"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# List Issues"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$git_repo is:issue"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# Create Issue"
+  },
+  {
+    "kind": 2,
+    "language": "markdown",
+    "value": "$git_repo create issue title:\"New Issue\" body:\"Description of the new issue\""
+  }
+]

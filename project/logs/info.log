@@ -123,3 +123,90 @@
 2024-11-25 02:22:15,137 - info - INFO - Initialized Audio Transcription agent
 2024-11-25 02:29:21,155 - info - INFO - Initialized Audio Transcription agent
 2024-11-25 02:29:28,718 - info - INFO - Starting Flask application
+2024-11-25 02:39:11,673 - info - INFO - Starting Flask application
+2024-11-25 02:39:12,840 - info - INFO - Starting Flask application
+2024-11-25 02:39:20,232 - info - INFO - Initialized Live Caption agent
+2024-11-25 02:39:20,252 - info - INFO - Initialized Audio Transcription agent
+2024-11-25 02:39:24,029 - info - INFO - Initialized Audio Transcription agent
+2024-11-25 03:29:01,099 - info - INFO - Initialized Live Caption agent
+2024-11-25 03:29:01,262 - info - INFO - Initialized Audio Transcription agent
+2024-11-25 03:29:12,648 - info - INFO - Initialized Live Caption agent
+2024-11-25 03:29:12,658 - info - INFO - Initialized Audio Transcription agent
+2024-11-25 03:29:16,255 - info - INFO - Initialized Live Caption agent
+2024-11-25 03:29:16,262 - info - INFO - Initialized Audio Transcription agent
+2024-12-01 19:13:56,247 - info - INFO - Starting Flask application
+2024-12-01 19:13:57,441 - info - INFO - Starting Flask application
+2024-12-01 19:13:58,672 - info - INFO - Initialized Live Caption agent
+2024-12-01 19:13:58,690 - info - INFO - Initialized Audio Transcription agent
+2024-12-01 19:14:00,576 - info - INFO - Initialized Live Caption agent
+2024-12-01 19:14:00,584 - info - INFO - Initialized Audio Transcription agent
+2024-12-01 19:14:04,399 - info - INFO - Initialized Audio Transcription agent
+2024-12-01 20:47:29,616 - info - INFO - Starting Flask application
+2024-12-01 20:47:30,823 - info - INFO - Starting Flask application
+2024-12-01 20:47:32,006 - info - INFO - Initialized Live Caption agent
+2024-12-01 20:47:32,025 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:00:26,136 - info - INFO - Starting Flask application
+2024-12-09 03:00:27,369 - info - INFO - Starting Flask application
+2024-12-09 03:00:30,088 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:00:30,121 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:01:17,774 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:01:17,786 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:04:25,398 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:04:28,527 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:09:03,115 - info - INFO - Starting Flask application
+2024-12-09 03:09:24,725 - info - INFO - Starting Flask application
+2024-12-09 03:35:29,442 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:35:29,484 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:35:30,322 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:35:30,782 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:35:30,793 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:35:30,802 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:39:28,943 - info - INFO - Starting Flask application
+2024-12-09 03:40:32,152 - info - INFO - Starting Flask application
+2024-12-09 03:42:22,969 - info - INFO - Starting Flask application
+2024-12-09 03:42:31,085 - info - INFO - Starting Flask application
+2024-12-09 03:42:31,218 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:42:31,226 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:42:31,918 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:42:40,448 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:42:46,623 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:45:46,147 - info - INFO - Starting Flask application
+2024-12-09 03:45:54,432 - info - INFO - Starting Flask application
+2024-12-09 03:45:54,549 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:46:00,209 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:50:14,029 - info - INFO - Starting Flask application
+2024-12-09 03:50:22,401 - info - INFO - Starting Flask application
+2024-12-09 03:50:22,515 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:50:22,523 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:50:23,179 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:50:26,259 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:50:30,826 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:50:39,971 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:54:51,489 - info - INFO - Starting Flask application
+2024-12-09 03:55:14,155 - info - INFO - Starting Flask application
+2024-12-09 03:57:20,473 - info - INFO - Initialized Live Caption agent
+2024-12-09 03:57:20,483 - info - INFO - Initialized Audio Transcription agent
+2024-12-09 03:57:21,150 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:57:25,032 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:57:30,276 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:58:05,131 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:58:40,555 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:59:32,771 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:59:46,325 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 03:59:53,386 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:04:41,365 - info - INFO - Starting Flask application
+2024-12-09 04:04:49,648 - info - INFO - Starting Flask application
+2024-12-09 04:04:49,774 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:05:09,045 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:29:49,691 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:30:13,495 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:31:18,929 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:31:37,553 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:33:18,878 - info - INFO - Starting Flask application
+2024-12-09 04:33:51,609 - info - INFO - Starting Flask application
+2024-12-09 04:34:05,041 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:42:27,765 - info - INFO - Starting Flask application
+2024-12-09 04:50:25,210 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:50:44,732 - info - INFO - Initialized Speaker Diarization agent
+2024-12-09 04:51:05,502 - info - INFO - Starting Flask application
+2024-12-09 04:51:19,991 - info - INFO - Initialized Speaker Diarization agent

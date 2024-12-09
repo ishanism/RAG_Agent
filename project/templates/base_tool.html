@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - RAG Agent</title>
+    <style>
+        .container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .tool-header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .input-section, .output-section, .log-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .console-log {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 3px;
+            height: 200px;
+            overflow-y: auto;
+        }
+        .result-area {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            min-height: 100px;
+        }
+        .error { color: #ff0000; }
+        .success { color: #00ff00; }
+        .info { color: #0088ff; }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <div class="tool-header">
+            <h1>{{ title }}</h1>
+            <p>{{ description }}</p>
+            <a href="/">← Back to Dashboard</a>
+        </div>
+
+        <div class="input-section">
+            <h2>Input</h2>
+            {% block input_content %}{% endblock %}
+        </div>
+
+        <div class="output-section">
+            <h2>Output</h2>
+            <div id="result" class="result-area">
+                Waiting for input...
+            </div>
+        </div>
+
+        <div class="log-section">
+            <h2>Console Log</h2>
+            <div id="console" class="console-log"></div>
+        </div>
+    </div>
+
+    <script>
+        function logToConsole(message, type = 'info') {
+            const console = document.getElementById('console');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            console.appendChild(entry);
+            console.scrollTop = console.scrollHeight;
+        }
+
+        {% block extra_scripts %}{% endblock %}
+    </script>
+</body>
+</html>
