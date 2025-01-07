@@ -26,18 +26,29 @@ class SpeakerDiarizationAgent(BaseAgent):
             return self._handle_error("Audio path required")
 
         audio_path = os.path.abspath(input_data['audio_path'])
+        language = input_data.get('language', 'auto')  # Get language from input_data
+
         if not os.path.exists(audio_path):
             return self._handle_error(f"Audio file not found at {audio_path}")
 
         try:
-            debug_logger.debug(f"Processing audio file: {audio_path}")
+            debug_logger.debug(f"Processing audio file: {audio_path} with language: {language}")
             
             # Load and transcribe audio
-            model = whisperx.load_model("large-v2", self.device, compute_type=self.compute_type)
+            debug_logger.debug("Loading WhisperX model")
+            model = whisperx.load_model("large-v3", self.device, compute_type=self.compute_type)
+            debug_logger.debug("WhisperX model loaded successfully")
+            
+            debug_logger.debug(f"Loading audio from path: {audio_path}")
             audio = whisperx.load_audio(audio_path)
+            debug_logger.debug("Audio loaded successfully")
             
             debug_logger.debug("Starting transcription")
-            result = model.transcribe(audio, batch_size=16)
+            # Use selected language if not auto
+            transcribe_options = {"batch_size": 16}
+            if language != "auto":
+                transcribe_options["language"] = language
+            result = model.transcribe(audio, **transcribe_options)
             
             # Clear GPU memory
             gc.collect()

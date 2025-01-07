@@ -39,6 +39,18 @@
 {% endblock %} {% block input_content %}
 <div class="upload-container" id="dropZone">
     <form id="diarizeForm">
+        <div style="margin-bottom: 15px">
+            <label for="language">Select Language:</label>
+            <select id="language" name="language">
+                <option value="auto">Auto Detect</option>
+                <option value="en">English (en)</option>
+                <option value="de">German (de)</option>
+                <option value="ne">Nepali (ne)</option>
+                <option value="hi">Hindi (hi)</option>
+                <option value="ur">Urdu (ur)</option>
+                <option value="ja">Japanese (ja)</option>
+            </select>
+        </div>
         <div>
             <label for="audioFile">Select or drag audio file here</label>
             <input
@@ -100,6 +112,7 @@
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const audioFile = document.getElementById("audioFile").files[0];
+        const language = document.getElementById("language").value;
         const submitBtn = document.getElementById("submitBtn");
 
         if (!audioFile) {
@@ -123,6 +136,7 @@
         try {
             const formData = new FormData();
             formData.append("audio", audioFile);
+            formData.append("language", language);  // Add language to form data
 
             const xhr = new XMLHttpRequest();
 
