@@ -136,11 +136,16 @@ def diarize_audio():
     debug_logger.debug("Received diarization request")
     
     try:
+        language = request.form.get('language', 'auto')
+        debug_logger.debug(f"Language selected: {language}")
+        
         if 'audio' not in request.files:
             debug_logger.error("No file in request")
             return jsonify({"status": "error", "message": "No file uploaded"}), 400
         
         file = request.files['audio']
+        debug_logger.debug(f"Received file: {file.filename}")
+        
         if file.filename == '':
             debug_logger.error("Empty filename")
             return jsonify({"status": "error", "message": "No file selected"}), 400
@@ -158,7 +163,8 @@ def diarize_audio():
             filename = secure_filename(file.filename)
             filepath = os.path.join(abs_upload_folder, filename)
             
-            debug_logger.debug(f"Saving uploaded file to {filepath}")
+            debug_logger.debug(f"Processing file: {filename}")
+            debug_logger.debug(f"Full filepath: {filepath}")
             
             # Ensure upload directory exists
             os.makedirs(abs_upload_folder, exist_ok=True)
@@ -173,8 +179,13 @@ def diarize_audio():
             
             # Process with absolute path
             agent = SpeakerDiarizationAgent()
-            debug_logger.debug(f"Starting diarization process on {filepath}")
-            result = agent.run({"audio_path": filepath})
+            debug_logger.debug(f"Calling diarization agent with language: {language}")
+            result = agent.run({
+                "audio_path": filepath,
+                "language": language
+            })
+            
+            debug_logger.debug(f"Agent result status: {result.get('status')}")
             
             # Cleanup
             if os.path.exists(filepath):
@@ -184,16 +195,11 @@ def diarize_audio():
             return jsonify(result)
             
         except Exception as e:
-            if 'filepath' in locals() and os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except:
-                    pass
-            error_logger.error(f"File handling error: {str(e)}")
+            error_logger.error(f"File handling error: {str(e)}", exc_info=True)
             return jsonify({"status": "error", "message": f"File handling error: {str(e)}"}), 500
             
     except Exception as e:
-        error_logger.error(f"Diarization error: {str(e)}")
+        error_logger.error(f"Diarization error: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # Simplified view_agent route - only returns the form
