@@ -1,3 +1,5 @@
+## completely written by local qwen-coder-7B AI. not a single line of code has been written by me, except for probably some simple debugging when AI can't seems to get simple stuff right
+
 clone the repositary.
 
 go to projects folder.
