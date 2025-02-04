@@ -1,0 +1,73 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Transform Button</title>
+    <style>
+        /* Basic styling for the button */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+    /* Styling the airplane button */
+    #airplaneButton {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: transform 0.3s ease, color 0.3s ease;
+    }
+
+    /* Active state styling */
+    #airplaneButton.active {
+        transform: scale(1.5);
+        color: #555;
+    }
+
+    /* Responsive styling */
+    @media screen and (max-width: 600px) {
+        #airplaneButton {
+            padding: 8px 16px;
+        }
+    }
+</style></head>
+<body>
+    <button id="airplaneButton">Transform into Airplane</button>
+
+<script>
+    document.getElementById('airplaneButton').addEventListener('click', function() {
+        this.classList.add('active');
+        const wings = document.createElement('div');
+        wings.style.position = 'absolute';
+        wings.style.left = '10px';
+        wings.style.top = '20px';
+        wings.style.transform = 'translate(-50%, -30%) rotate(45deg)';
+        wings.style.width = '100%';
+        wings.style.height = '80%';
+        wings.style.backgroundColor = '#f3f3f3';
+        wings.style.border = '1px solid #ccc';
+        wings.style.cursor = 'pointer';
+        wings.textContent = 'Transformed';
+        document.body.appendChild(wings);
+
+        // You can add more effects here, like revealing a landing strip
+        const landingStrip = document.createElement('div');
+        landingStrip.style.position = 'absolute';
+        landingStrip.style.left = '50px';
+        landingStrip.style.top = '20px';
+        landingStrip.style.transform = 'translateY(-10%) translateX(5%) rotate(-45deg)';
+        landingStrip.style.width = '100%';
+        landingStrip.style.height = '40%';
+        landingStrip.style.backgroundColor = '#ffffff';
+        landingStrip.style.border = '2px solid #000';
+        landingStrip.style.cursor = 'pointer';
+        landingStrip.textContent = 'Landing Strip';
+        document.body.appendChild(landingStrip);
+
+        this.classList.remove('active');
+    });
+</script></body>
+</html>

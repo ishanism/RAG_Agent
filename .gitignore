@@ -8,3 +8,10 @@ error.log
 
 !templates/
 !templates/*
+.llms
+project/uploads
+project/*.log
+project/logs/critical.log
+project/logs/debug.log
+project/logs/info.log
+project/logs/warning.log
