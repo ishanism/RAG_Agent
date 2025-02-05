@@ -1,0 +1,2574 @@
+Repository: RAG_Agent
+Files analyzed: 27
+
+Estimated tokens: 51.9k
+
+Directory structure:
+└── RAG_Agent/
+    ├── RAG_AGENT.github-issues
+    ├── notes
+    ├── project/
+    │   ├── __init__.py
+    │   ├── agent_registry.py
+    │   ├── base_agent.py
+    │   ├── base_tool.py
+    │   ├── logger.py
+    │   ├── logs/
+    │   ├── main.py
+    │   ├── rag_example.ipynb
+    │   ├── schema.yml
+    │   ├── templates/
+    │   │   ├── agents/
+    │   │   │   └── speakerdiarizationagent.html
+    │   │   ├── base_tool.html
+    │   │   ├── diarization_tool.html
+    │   │   └── index.html
+    │   ├── tools/
+    │   │   ├── ai_runners/
+    │   │   │   ├── live_caption/
+    │   │   │   │   └── main.py
+    │   │   │   ├── speaker_diarization/
+    │   │   │   │   └── main.py
+    │   │   │   └── transcribe_audio/
+    │   │   │       └── main.py
+    │   │   └── file_management/
+    │   │       ├── create_file/
+    │   │       │   └── main.py
+    │   │       ├── delete_file/
+    │   │       │   └── main.py
+    │   │       └── rename_file/
+    │   │           └── main.py
+    │   ├── tools_registry.py
+    │   ├── uploads/
+    │   └── utils/
+    │       └── audio_utils.py
+    ├── scripts/
+    │   ├── generate_commit.ps1
+    │   ├── generate_commit.sh
+    │   └── generate_commit_message.py
+    ├── templates/
+    │   └── commit_template.md
+    └── tests/
+        └── index.html
+
+
+================================================
+File: \RAG_AGENT.github-issues
+================================================
+[
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$git_repo=repo:ishanism/RAG_Agent"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# List Issues"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$git_repo is:issue"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# Create Issue"
+  },
+  {
+    "kind": 2,
+    "language": "markdown",
+    "value": "$git_repo create issue title:\"New Issue\" body:\"Description of the new issue\""
+  }
+]
+
+================================================
+File: \notes
+================================================
+pip install --quiet -U langchain langchain_community tiktoken langchain-nomic "nomic[local]" langchain-ollama scikit-learn langgraph tavily-python bs4 
+pip install langfuse
+
+# Speaker Diarization Dependencies
+pip install git+https://github.com/m-bain/whisperx.git
+pip install torch torchaudio
+pip install pyannote.audio==3.1.1
+
+# Steps taken:
+1. Created SpeakerDiarizationAgent in tools/ai_runners/speaker_diarization
+2. Added file upload form to index.html
+3. Created /diarize endpoint in main.py
+4. Added CUDA/CPU support with automatic device selection
+5. Set up file upload handling with security measures
+6. Implemented memory management for GPU resources
+
+================================================
+File: \project\agent_registry.py
+================================================
+
+from typing import Dict, Type
+from base_agent import BaseAgent
+
+class AgentRegistry:
+    _agents: Dict[str, Type[BaseAgent]] = {}
+
+    @classmethod
+    def register(cls, agent_class: Type[BaseAgent]) -> None:
+        """Register a new agent class"""
+        cls._agents[agent_class.__name__] = agent_class
+        
+    @classmethod
+    def get_agent(cls, agent_name: str) -> Type[BaseAgent]:
+        """Get agent class by name"""
+        return cls._agents.get(agent_name)
+    
+    @classmethod
+    def get_all_agents(cls) -> Dict[str, Type[BaseAgent]]:
+        """Get all registered agents"""
+        return cls._agents
+
+================================================
+File: \project\base_agent.py
+================================================
+import yaml
+import jsonschema
+from typing import Any, Dict, Optional
+from abc import ABC, abstractmethod
+from langchain_core.callbacks import CallbackManager  # Updated import path
+from logger import debug_logger, info_logger, warning_logger, error_logger
+
+class BaseAgent(ABC):
+    """Base class for all agents and tools"""
+    
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        callback_manager: Optional[CallbackManager] = None,  # Fixed bracket syntax here
+        **kwargs
+    ):
+        self.name = name
+        self.description = description
+        self.callback_manager = callback_manager
+        self.kwargs = kwargs
+        info_logger.info(f"Initialized {self.name} agent")
+        self._load_schema()
+
+    def _load_schema(self):
+        """Load schema for this agent"""
+        with open('schema.yml', 'r') as f:
+            schemas = yaml.safe_load(f)
+            agent_schema = schemas['schemas'].get(self.__class__.__name__, {})
+            self.input_schema = agent_schema.get('input', {})
+            self.output_schema = agent_schema.get('output', {})
+
+    @abstractmethod
+    def run(self, *args, **kwargs) -> Any:
+        """Main execution method that must be implemented by all agents"""
+        pass
+
+    def validate_inputs(self, input_data: Dict) -> bool:
+        """Validate input data against schema"""
+        try:
+            jsonschema.validate(instance=input_data, schema=self.input_schema)
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            error_logger.error(f"Input validation error: {str(e)}")
+            return False
+
+    def validate_output(self, output_data: Dict) -> bool:
+        """Validate output data against schema"""
+        try:
+            jsonschema.validate(instance=output_data, schema=self.output_schema)
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            error_logger.error(f"Output validation error: {str(e)}")
+            return False
+
+    def pre_run(self) -> None:
+        """Hook for operations before running the agent"""
+        debug_logger.debug(f"Starting {self.name} execution")
+
+    def post_run(self) -> None:
+        """Hook for cleanup operations after running the agent"""
+        debug_logger.debug(f"Completed {self.name} execution")
+
+    def get_metadata(self) -> Dict[str, Any]:
+        """Get agent metadata"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "type": self.__class__.__name__
+        }
+
+================================================
+File: \project\base_tool.py
+================================================
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+import yaml
+import jsonschema
+from logger import debug_logger, info_logger, error_logger
+
+class BaseTool(ABC):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        **kwargs
+    ):
+        self.name = name
+        self.description = description
+        self.kwargs = kwargs
+        info_logger.info(f"Initialized {self.name} tool")
+        self._load_schema()
+
+    def _load_schema(self):
+        with open('schema.yml', 'r') as f:
+            schemas = yaml.safe_load(f)
+            tool_schema = schemas['schemas'].get(self.__class__.__name__, {})
+            self.input_schema = tool_schema.get('input', {})
+            self.output_schema = tool_schema.get('output', {})
+
+    @abstractmethod
+    def execute(self, *args, **kwargs) -> Any:
+        pass
+
+    def validate_inputs(self, input_data: Dict) -> bool:
+        try:
+            jsonschema.validate(instance=input_data, schema=self.input_schema)
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            error_logger.error(f"Tool input validation error: {str(e)}")
+            return False
+
+    def validate_output(self, output_data: Dict) -> bool:
+        try:
+            jsonschema.validate(instance=output_data, schema=self.output_schema)
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            error_logger.error(f"Tool output validation error: {str(e)}")
+            return False
+
+    def get_metadata(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "type": self.__class__.__name__
+        }
+
+================================================
+File: \project\logger.py
+================================================
+import logging
+import os
+
+def setup_loggers():
+    """Setup multiple loggers for different log levels"""
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(log_format)
+    
+    # Ensure logs directory exists
+    os.makedirs('logs', exist_ok=True)
+    
+    # Create different loggers for each level
+    loggers = {
+        'debug': setup_level_logger('debug', 'logs/debug.log', logging.DEBUG, formatter),
+        'info': setup_level_logger('info', 'logs/info.log', logging.INFO, formatter),
+        'warning': setup_level_logger('warning', 'logs/warning.log', logging.WARNING, formatter),
+        'error': setup_level_logger('error', 'logs/error.log', logging.ERROR, formatter),
+        'critical': setup_level_logger('critical', 'logs/critical.log', logging.CRITICAL, formatter)
+    }
+    
+    return loggers
+
+def setup_level_logger(name, log_file, level, formatter):
+    """Setup individual logger for specific level"""
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(formatter)
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    
+    return logger
+
+# Create logger instances
+loggers = setup_loggers()
+debug_logger = loggers['debug']
+info_logger = loggers['info']
+warning_logger = loggers['warning']
+error_logger = loggers['error']
+critical_logger = loggers['critical']
+
+================================================
+File: \project\main.py
+================================================
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+import os
+import subprocess
+from logger import debug_logger, info_logger, warning_logger, error_logger, critical_logger
+from collections import defaultdict
+from agent_registry import AgentRegistry
+from tools_registry import ToolRegistry
+from werkzeug.utils import secure_filename
+import requests
+from urllib.parse import urlparse
+
+# Register your agents
+from tools.ai_runners.live_caption.main import LiveCaptionAgent
+from tools.ai_runners.transcribe_audio.main import TranscribeAudioAgent
+from tools.ai_runners.speaker_diarization.main import SpeakerDiarizationAgent
+
+AgentRegistry.register(LiveCaptionAgent)
+AgentRegistry.register(TranscribeAudioAgent)
+AgentRegistry.register(SpeakerDiarizationAgent)  # Add this line
+
+app = Flask(__name__)
+app.config['DEBUG'] = True
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'wav', 'mp3', 'ogg', 'flac'}
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def discover_scripts():
+    script_tree = defaultdict(list)
+    debug_logger.debug("Starting script discovery")
+    
+    for root, dirs, files in os.walk('tools'):
+        for file in files:
+            if not file.endswith('.py') or file == '__init__.py':
+                continue
+            script_path = os.path.relpath(os.path.join(root, file)).replace('\\', '/')
+            category = script_path.split('/')[1]
+            script_tree[category].append(script_path)
+            debug_logger.debug(f"Found script: {script_path}")
+    return script_tree
+
+def get_agent_metadata():
+    agents = {}
+    for agent_name, agent_class in AgentRegistry.get_all_agents().items():
+        agent_instance = agent_class()
+        agents[agent_name] = agent_instance.get_metadata()
+    return agents
+
+def get_tool_metadata():
+    tools = {}
+    for tool_name, tool_class in ToolRegistry.get_all_tools().items():
+        tool_instance = tool_class()
+        tools[tool_name] = tool_instance.get_metadata()
+    return tools
+
+@app.route('/')
+def index():
+    script_tree = discover_scripts()
+    if not script_tree:
+        warning_logger.warning("No scripts found")
+        return "<pre>No scripts found</pre>"
+
+    agents = get_agent_metadata()
+    tools = get_tool_metadata()
+    try:
+        return render_template('index.html', 
+                             script_tree=script_tree, 
+                             agents=agents,
+                             tools=tools)
+    except Exception as e:
+        error_logger.error(f"Template error: {str(e)}")
+        return f"<pre>Error: {str(e)}</pre>"
+
+def validate_script(script):
+    script = script.replace('\\', '/').replace('//', '/')
+    if not script.endswith('.py'):
+        return False, "Not a Python script"
+    if not os.path.exists(script):
+        return False, "Script not found"
+    return True, ""
+
+@app.route('/run/<path:script>')
+def run_script(script):
+    is_valid, error = validate_script(script)
+    if not is_valid:
+        return error
+
+    try:
+        result = subprocess.run(['python', script], capture_output=True, text=True)
+        return f"<pre>{result.stdout}</pre>"
+    except Exception as e:
+        error_logger.error(f"Script error: {str(e)}")
+        return f"<pre>Error: {str(e)}</pre>"
+
+@app.route('/run_agent/<agent_name>', methods=['POST'])
+def run_agent(agent_name):
+    debug_logger.debug(f"Attempting to run agent: {agent_name}")
+    
+    agent_class = AgentRegistry.get_agent(agent_name)
+    if not agent_class:
+        warning_logger.warning(f"Agent not found: {agent_name}")
+        return "Agent not found", 404
+        
+    try:
+        agent = agent_class()
+        result = agent.run()
+        return jsonify({"status": "success", "result": result})
+    except Exception as e:
+        error_logger.error(f"Failed to run agent {agent_name}: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/run_tool/<tool_name>', methods=['POST'])
+def run_tool(tool_name):
+    debug_logger.debug(f"Attempting to run tool: {tool_name}")
+    
+    tool_class = ToolRegistry.get_tool(tool_name)
+    if not tool_class:
+        warning_logger.warning(f"Tool not found: {tool_name}")
+        return "Tool not found", 404
+        
+    try:
+        tool = tool_class()
+        result = tool.execute(request.json)
+        return jsonify({"status": "success", "result": result})
+    except Exception as e:
+        error_logger.error(f"Failed to run tool {tool_name}: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/diarize', methods=['POST'])
+def diarize_audio():
+    debug_logger.debug("Received diarization request")
+    
+    try:
+        language = request.form.get('language', 'auto')
+        debug_logger.debug(f"Language selected: {language}")
+        
+        if 'audio' not in request.files:
+            debug_logger.error("No file in request")
+            return jsonify({"status": "error", "message": "No file uploaded"}), 400
+        
+        file = request.files['audio']
+        debug_logger.debug(f"Received file: {file.filename}")
+        
+        if file.filename == '':
+            debug_logger.error("Empty filename")
+            return jsonify({"status": "error", "message": "No file selected"}), 400
+            
+        if not allowed_file(file.filename):
+            debug_logger.error(f"Invalid file type: {file.filename}")
+            return jsonify({
+                "status": "error", 
+                "message": f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            }), 400
+            
+        try:
+            # Use absolute paths
+            abs_upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(abs_upload_folder, filename)
+            
+            debug_logger.debug(f"Processing file: {filename}")
+            debug_logger.debug(f"Full filepath: {filepath}")
+            
+            # Ensure upload directory exists
+            os.makedirs(abs_upload_folder, exist_ok=True)
+            
+            # Save file
+            file.save(filepath)
+            
+            if not os.path.exists(filepath):
+                return jsonify({"status": "error", "message": "Failed to save file"}), 500
+            
+            debug_logger.debug(f"File saved successfully at {filepath}")
+            
+            # Process with absolute path
+            agent = SpeakerDiarizationAgent()
+            debug_logger.debug(f"Calling diarization agent with language: {language}")
+            result = agent.run({
+                "audio_path": filepath,
+                "language": language
+            })
+            
+            debug_logger.debug(f"Agent result status: {result.get('status')}")
+            
+            # Cleanup
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                debug_logger.debug("Cleaned up temporary file")
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            error_logger.error(f"File handling error: {str(e)}", exc_info=True)
+            return jsonify({"status": "error", "message": f"File handling error: {str(e)}"}), 500
+            
+    except Exception as e:
+        error_logger.error(f"Diarization error: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Simplified view_agent route - only returns the form
+@app.route('/view/agent/<agent_name>')
+def view_agent(agent_name):
+    agent_class = AgentRegistry.get_agent(agent_name)
+    if not agent_class:
+        return "Agent not found", 404
+        
+    agent = agent_class()
+    metadata = agent.get_metadata()
+    
+    template = "diarization_tool.html" if agent_name == "SpeakerDiarizationAgent" else "base_tool.html"
+    return render_template(template, title=metadata['name'], description=metadata['description'])
+
+@app.route('/view/script/<path:script>')
+def view_script(script):
+    is_valid, error = validate_script(script)
+    if not is_valid:
+        return error
+        
+    script_name = script.split('/')[-2].replace('_', ' ').title()
+    return render_template("base_tool.html",
+                         title=script_name,
+                         description=f"Script: {script}")
+
+if __name__ == '__main__':
+    info_logger.info("Starting Flask application")
+    app.run(debug=True)
+
+
+================================================
+File: \project\rag_example.ipynb
+================================================
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Creating llm call variables"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Langfuse callbacks\n",
+    "from langfuse.callback import CallbackHandler\n",
+    "langfuse_handler = CallbackHandler(\n",
+    "    secret_key=\"sk-lf-35974e80-2b68-43d1-814f-46970d3c01be\",\n",
+    "    public_key=\"pk-lf-39120730-2f9b-4e98-a519-d2030d50c11b\",\n",
+    "    host=\"http://localhost:3080\", # 🇪🇺 EU region\n",
+    "  # host=\"https://us.cloud.langfuse.com\", # 🇺🇸 US region\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "### LLM\n",
+    "from langchain_ollama import ChatOllama\n",
+    "\n",
+    "local_llm = \"hf.co/cognitivecomputations/dolphin-2.9.4-llama3.1-8b-gguf:Q6_K\"\n",
+    "local_llm = \"llama3.2:3b-instruct-q8_0\"\n",
+    "llm = ChatOllama(model=local_llm, temperature=0,)\n",
+    "llm_json_mode = ChatOllama(model=local_llm, temperature=0, format=\"json\",)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "import getpass\n",
+    "\n",
+    "\n",
+    "def _set_env(var: str):\n",
+    "    if not os.environ.get(var):\n",
+    "        os.environ[var] = getpass.getpass(f\"{var}: \")\n",
+    "\n",
+    "\n",
+    "# _set_env(\"TAVILY_API_KEY\")\n",
+    "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"true\"\n",
+    "\n",
+    "# _set_env(\"LANGCHAIN_API_KEY\")\n",
+    "# os.environ[\"LANGCHAIN_TRACING_V2\"] = \"true\"\n",
+    "# os.environ[\"LANGCHAIN_PROJECT\"] = \"local-llama32-rag\"\n",
+    "\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "USER_AGENT environment variable not set, consider setting it to identify your requests.\n",
+      "Downloading: 100%|██████████| 274M/274M [00:27<00:00, 10.0MiB/s] \n",
+      "Verifying: 100%|██████████| 274M/274M [00:00<00:00, 630MiB/s] \n"
+     ]
+    }
+   ],
+   "source": [
+    "from langchain.text_splitter import RecursiveCharacterTextSplitter\n",
+    "from langchain_community.document_loaders import WebBaseLoader\n",
+    "from langchain_community.vectorstores import SKLearnVectorStore\n",
+    "from langchain_nomic.embeddings import NomicEmbeddings\n",
+    "\n",
+    "urls = [\n",
+    "    \"https://refine.dev/docs/guides-concepts/data-fetching/\",\n",
+    "    \"https://refine.dev/docs/guides-concepts/general-concepts/\",\n",
+    "    \"https://refine.dev/docs/guides-concepts/forms/\",\n",
+    "]\n",
+    "\n",
+    "# Load documents\n",
+    "docs = [WebBaseLoader(url).load() for url in urls]\n",
+    "docs_list = [item for sublist in docs for item in sublist]\n",
+    "\n",
+    "# Split documents\n",
+    "text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(\n",
+    "    chunk_size=1000, chunk_overlap=200\n",
+    ")\n",
+    "doc_splits = text_splitter.split_documents(docs_list)\n",
+    "\n",
+    "# Add to vectorDB\n",
+    "vectorstore = SKLearnVectorStore.from_documents(\n",
+    "    documents=doc_splits,\n",
+    "    embedding=NomicEmbeddings(model=\"nomic-embed-text-v1.5\", inference_mode=\"local\"),\n",
+    ")\n",
+    "\n",
+    "# Create retriever\n",
+    "retriever = vectorstore.as_retriever(k=3)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Components"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "ConnectError",
+     "evalue": "[WinError 10061] No connection could be made because the target machine actively refused it",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[1;31mConnectError\u001b[0m                              Traceback (most recent call last)",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_transports\\default.py:72\u001b[0m, in \u001b[0;36mmap_httpcore_exceptions\u001b[1;34m()\u001b[0m\n\u001b[0;32m     71\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m---> 72\u001b[0m     \u001b[38;5;28;01myield\u001b[39;00m\n\u001b[0;32m     73\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mException\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_transports\\default.py:236\u001b[0m, in \u001b[0;36mHTTPTransport.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    235\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m map_httpcore_exceptions():\n\u001b[1;32m--> 236\u001b[0m     resp \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_pool\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mreq\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    238\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(resp\u001b[38;5;241m.\u001b[39mstream, typing\u001b[38;5;241m.\u001b[39mIterable)\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_sync\\connection_pool.py:216\u001b[0m, in \u001b[0;36mConnectionPool.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    215\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_close_connections(closing)\n\u001b[1;32m--> 216\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m exc \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[0;32m    218\u001b[0m \u001b[38;5;66;03m# Return the response. Note that in this case we still have to manage\u001b[39;00m\n\u001b[0;32m    219\u001b[0m \u001b[38;5;66;03m# the point at which the response is closed.\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_sync\\connection_pool.py:196\u001b[0m, in \u001b[0;36mConnectionPool.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    194\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    195\u001b[0m     \u001b[38;5;66;03m# Send the request on the assigned connection.\u001b[39;00m\n\u001b[1;32m--> 196\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[43mconnection\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    197\u001b[0m \u001b[43m        \u001b[49m\u001b[43mpool_request\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrequest\u001b[49m\n\u001b[0;32m    198\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    199\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m ConnectionNotAvailable:\n\u001b[0;32m    200\u001b[0m     \u001b[38;5;66;03m# In some cases a connection may initially be available to\u001b[39;00m\n\u001b[0;32m    201\u001b[0m     \u001b[38;5;66;03m# handle a request, but then become unavailable.\u001b[39;00m\n\u001b[0;32m    202\u001b[0m     \u001b[38;5;66;03m#\u001b[39;00m\n\u001b[0;32m    203\u001b[0m     \u001b[38;5;66;03m# In this case we clear the connection and try again.\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py:99\u001b[0m, in \u001b[0;36mHTTPConnection.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m     98\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connect_failed \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mTrue\u001b[39;00m\n\u001b[1;32m---> 99\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m exc\n\u001b[0;32m    101\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connection\u001b[38;5;241m.\u001b[39mhandle_request(request)\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py:76\u001b[0m, in \u001b[0;36mHTTPConnection.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m     75\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connection \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m:\n\u001b[1;32m---> 76\u001b[0m     stream \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_connect\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m     78\u001b[0m     ssl_object \u001b[38;5;241m=\u001b[39m stream\u001b[38;5;241m.\u001b[39mget_extra_info(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mssl_object\u001b[39m\u001b[38;5;124m\"\u001b[39m)\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py:122\u001b[0m, in \u001b[0;36mHTTPConnection._connect\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    121\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m Trace(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mconnect_tcp\u001b[39m\u001b[38;5;124m\"\u001b[39m, logger, request, kwargs) \u001b[38;5;28;01mas\u001b[39;00m trace:\n\u001b[1;32m--> 122\u001b[0m     stream \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_network_backend\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mconnect_tcp\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    123\u001b[0m     trace\u001b[38;5;241m.\u001b[39mreturn_value \u001b[38;5;241m=\u001b[39m stream\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_backends\\sync.py:205\u001b[0m, in \u001b[0;36mSyncBackend.connect_tcp\u001b[1;34m(self, host, port, timeout, local_address, socket_options)\u001b[0m\n\u001b[0;32m    200\u001b[0m exc_map: ExceptionMapping \u001b[38;5;241m=\u001b[39m {\n\u001b[0;32m    201\u001b[0m     socket\u001b[38;5;241m.\u001b[39mtimeout: ConnectTimeout,\n\u001b[0;32m    202\u001b[0m     \u001b[38;5;167;01mOSError\u001b[39;00m: ConnectError,\n\u001b[0;32m    203\u001b[0m }\n\u001b[1;32m--> 205\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m map_exceptions(exc_map):\n\u001b[0;32m    206\u001b[0m     sock \u001b[38;5;241m=\u001b[39m socket\u001b[38;5;241m.\u001b[39mcreate_connection(\n\u001b[0;32m    207\u001b[0m         address,\n\u001b[0;32m    208\u001b[0m         timeout,\n\u001b[0;32m    209\u001b[0m         source_address\u001b[38;5;241m=\u001b[39msource_address,\n\u001b[0;32m    210\u001b[0m     )\n",
+      "File \u001b[1;32mC:\\Python\\Python312\\Lib\\contextlib.py:158\u001b[0m, in \u001b[0;36m_GeneratorContextManager.__exit__\u001b[1;34m(self, typ, value, traceback)\u001b[0m\n\u001b[0;32m    157\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m--> 158\u001b[0m     \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgen\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mthrow\u001b[49m\u001b[43m(\u001b[49m\u001b[43mvalue\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    159\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mStopIteration\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n\u001b[0;32m    160\u001b[0m     \u001b[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001b[39;00m\n\u001b[0;32m    161\u001b[0m     \u001b[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001b[39;00m\n\u001b[0;32m    162\u001b[0m     \u001b[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpcore\\_exceptions.py:14\u001b[0m, in \u001b[0;36mmap_exceptions\u001b[1;34m(map)\u001b[0m\n\u001b[0;32m     13\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(exc, from_exc):\n\u001b[1;32m---> 14\u001b[0m         \u001b[38;5;28;01mraise\u001b[39;00m to_exc(exc) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mexc\u001b[39;00m\n\u001b[0;32m     15\u001b[0m \u001b[38;5;28;01mraise\u001b[39;00m\n",
+      "\u001b[1;31mConnectError\u001b[0m: [WinError 10061] No connection could be made because the target machine actively refused it",
+      "\nThe above exception was the direct cause of the following exception:\n",
+      "\u001b[1;31mConnectError\u001b[0m                              Traceback (most recent call last)",
+      "Cell \u001b[1;32mIn[5], line 15\u001b[0m\n\u001b[0;32m      6\u001b[0m router_instructions \u001b[38;5;241m=\u001b[39m \u001b[38;5;124m\"\"\"\u001b[39m\u001b[38;5;124mYou are an expert at routing a user question to a vectorstore or web search.\u001b[39m\n\u001b[0;32m      7\u001b[0m \n\u001b[0;32m      8\u001b[0m \u001b[38;5;124mThe vectorstore contains documents related to refine.dev framework.\u001b[39m\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m     11\u001b[0m \n\u001b[0;32m     12\u001b[0m \u001b[38;5;124mReturn JSON with single key, datasource, that is \u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mwebsearch\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124m or \u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mvectorstore\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124m depending on the question.\u001b[39m\u001b[38;5;124m\"\"\"\u001b[39m\n\u001b[0;32m     14\u001b[0m \u001b[38;5;66;03m# Test router\u001b[39;00m\n\u001b[1;32m---> 15\u001b[0m test_web_search \u001b[38;5;241m=\u001b[39m \u001b[43mllm_json_mode\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43minvoke\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m     16\u001b[0m \u001b[43m    \u001b[49m\u001b[43m[\u001b[49m\u001b[43mSystemMessage\u001b[49m\u001b[43m(\u001b[49m\u001b[43mcontent\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mrouter_instructions\u001b[49m\u001b[43m)\u001b[49m\u001b[43m]\u001b[49m\n\u001b[0;32m     17\u001b[0m \u001b[43m    \u001b[49m\u001b[38;5;241;43m+\u001b[39;49m\u001b[43m \u001b[49m\u001b[43m[\u001b[49m\n\u001b[0;32m     18\u001b[0m \u001b[43m        \u001b[49m\u001b[43mHumanMessage\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m     19\u001b[0m \u001b[43m            \u001b[49m\u001b[43mcontent\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mWho is favored to win the NFC Championship game in the 2024 season?\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\n\u001b[0;32m     20\u001b[0m \u001b[43m        \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m     21\u001b[0m \u001b[43m    \u001b[49m\u001b[43m]\u001b[49m\n\u001b[0;32m     22\u001b[0m \u001b[43m    \u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43m{\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mcallbacks\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m:\u001b[49m\u001b[43m \u001b[49m\u001b[43m[\u001b[49m\u001b[43mlangfuse_handler\u001b[49m\u001b[43m]\u001b[49m\u001b[43m}\u001b[49m\n\u001b[0;32m     23\u001b[0m \u001b[43m)\u001b[49m\n\u001b[0;32m     24\u001b[0m test_web_search_2 \u001b[38;5;241m=\u001b[39m llm_json_mode\u001b[38;5;241m.\u001b[39minvoke(\n\u001b[0;32m     25\u001b[0m     [SystemMessage(content\u001b[38;5;241m=\u001b[39mrouter_instructions)]\n\u001b[0;32m     26\u001b[0m     \u001b[38;5;241m+\u001b[39m [HumanMessage(content\u001b[38;5;241m=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mWhat are the models released today for llama3.2?\u001b[39m\u001b[38;5;124m\"\u001b[39m)]\n\u001b[0;32m     27\u001b[0m     , config\u001b[38;5;241m=\u001b[39m{\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mcallbacks\u001b[39m\u001b[38;5;124m\"\u001b[39m: [langfuse_handler]}, \n\u001b[0;32m     28\u001b[0m )\n\u001b[0;32m     29\u001b[0m test_vector_store \u001b[38;5;241m=\u001b[39m llm_json_mode\u001b[38;5;241m.\u001b[39minvoke(\n\u001b[0;32m     30\u001b[0m     [SystemMessage(content\u001b[38;5;241m=\u001b[39mrouter_instructions)]\n\u001b[0;32m     31\u001b[0m     \u001b[38;5;241m+\u001b[39m [HumanMessage(content\u001b[38;5;241m=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mWhat are the types of data in refine.dev framework?\u001b[39m\u001b[38;5;124m\"\u001b[39m)]\n\u001b[0;32m     32\u001b[0m     , config\u001b[38;5;241m=\u001b[39m{\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mcallbacks\u001b[39m\u001b[38;5;124m\"\u001b[39m: [langfuse_handler]}\n\u001b[0;32m     33\u001b[0m )\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_core\\language_models\\chat_models.py:286\u001b[0m, in \u001b[0;36mBaseChatModel.invoke\u001b[1;34m(self, input, config, stop, **kwargs)\u001b[0m\n\u001b[0;32m    275\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21minvoke\u001b[39m(\n\u001b[0;32m    276\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[0;32m    277\u001b[0m     \u001b[38;5;28minput\u001b[39m: LanguageModelInput,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    281\u001b[0m     \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs: Any,\n\u001b[0;32m    282\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m BaseMessage:\n\u001b[0;32m    283\u001b[0m     config \u001b[38;5;241m=\u001b[39m ensure_config(config)\n\u001b[0;32m    284\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m cast(\n\u001b[0;32m    285\u001b[0m         ChatGeneration,\n\u001b[1;32m--> 286\u001b[0m         \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgenerate_prompt\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    287\u001b[0m \u001b[43m            \u001b[49m\u001b[43m[\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_convert_input\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43minput\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m]\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    288\u001b[0m \u001b[43m            \u001b[49m\u001b[43mstop\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    289\u001b[0m \u001b[43m            \u001b[49m\u001b[43mcallbacks\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mget\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mcallbacks\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    290\u001b[0m \u001b[43m            \u001b[49m\u001b[43mtags\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mget\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mtags\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    291\u001b[0m \u001b[43m            \u001b[49m\u001b[43mmetadata\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mget\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mmetadata\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    292\u001b[0m \u001b[43m            \u001b[49m\u001b[43mrun_name\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mget\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mrun_name\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    293\u001b[0m \u001b[43m            \u001b[49m\u001b[43mrun_id\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mconfig\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mpop\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mrun_id\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43;01mNone\u001b[39;49;00m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    294\u001b[0m \u001b[43m            \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    295\u001b[0m \u001b[43m        \u001b[49m\u001b[43m)\u001b[49m\u001b[38;5;241m.\u001b[39mgenerations[\u001b[38;5;241m0\u001b[39m][\u001b[38;5;241m0\u001b[39m],\n\u001b[0;32m    296\u001b[0m     )\u001b[38;5;241m.\u001b[39mmessage\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_core\\language_models\\chat_models.py:786\u001b[0m, in \u001b[0;36mBaseChatModel.generate_prompt\u001b[1;34m(self, prompts, stop, callbacks, **kwargs)\u001b[0m\n\u001b[0;32m    778\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mgenerate_prompt\u001b[39m(\n\u001b[0;32m    779\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[0;32m    780\u001b[0m     prompts: \u001b[38;5;28mlist\u001b[39m[PromptValue],\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    783\u001b[0m     \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs: Any,\n\u001b[0;32m    784\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m LLMResult:\n\u001b[0;32m    785\u001b[0m     prompt_messages \u001b[38;5;241m=\u001b[39m [p\u001b[38;5;241m.\u001b[39mto_messages() \u001b[38;5;28;01mfor\u001b[39;00m p \u001b[38;5;129;01min\u001b[39;00m prompts]\n\u001b[1;32m--> 786\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgenerate\u001b[49m\u001b[43m(\u001b[49m\u001b[43mprompt_messages\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mstop\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mcallbacks\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mcallbacks\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m)\u001b[49m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_core\\language_models\\chat_models.py:643\u001b[0m, in \u001b[0;36mBaseChatModel.generate\u001b[1;34m(self, messages, stop, callbacks, tags, metadata, run_name, run_id, **kwargs)\u001b[0m\n\u001b[0;32m    641\u001b[0m         \u001b[38;5;28;01mif\u001b[39;00m run_managers:\n\u001b[0;32m    642\u001b[0m             run_managers[i]\u001b[38;5;241m.\u001b[39mon_llm_error(e, response\u001b[38;5;241m=\u001b[39mLLMResult(generations\u001b[38;5;241m=\u001b[39m[]))\n\u001b[1;32m--> 643\u001b[0m         \u001b[38;5;28;01mraise\u001b[39;00m e\n\u001b[0;32m    644\u001b[0m flattened_outputs \u001b[38;5;241m=\u001b[39m [\n\u001b[0;32m    645\u001b[0m     LLMResult(generations\u001b[38;5;241m=\u001b[39m[res\u001b[38;5;241m.\u001b[39mgenerations], llm_output\u001b[38;5;241m=\u001b[39mres\u001b[38;5;241m.\u001b[39mllm_output)  \u001b[38;5;66;03m# type: ignore[list-item]\u001b[39;00m\n\u001b[0;32m    646\u001b[0m     \u001b[38;5;28;01mfor\u001b[39;00m res \u001b[38;5;129;01min\u001b[39;00m results\n\u001b[0;32m    647\u001b[0m ]\n\u001b[0;32m    648\u001b[0m llm_output \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_combine_llm_outputs([res\u001b[38;5;241m.\u001b[39mllm_output \u001b[38;5;28;01mfor\u001b[39;00m res \u001b[38;5;129;01min\u001b[39;00m results])\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_core\\language_models\\chat_models.py:633\u001b[0m, in \u001b[0;36mBaseChatModel.generate\u001b[1;34m(self, messages, stop, callbacks, tags, metadata, run_name, run_id, **kwargs)\u001b[0m\n\u001b[0;32m    630\u001b[0m \u001b[38;5;28;01mfor\u001b[39;00m i, m \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28menumerate\u001b[39m(messages):\n\u001b[0;32m    631\u001b[0m     \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    632\u001b[0m         results\u001b[38;5;241m.\u001b[39mappend(\n\u001b[1;32m--> 633\u001b[0m             \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_generate_with_cache\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    634\u001b[0m \u001b[43m                \u001b[49m\u001b[43mm\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    635\u001b[0m \u001b[43m                \u001b[49m\u001b[43mstop\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    636\u001b[0m \u001b[43m                \u001b[49m\u001b[43mrun_manager\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mrun_managers\u001b[49m\u001b[43m[\u001b[49m\u001b[43mi\u001b[49m\u001b[43m]\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43;01mif\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43mrun_managers\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43;01melse\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[38;5;28;43;01mNone\u001b[39;49;00m\u001b[43m,\u001b[49m\n\u001b[0;32m    637\u001b[0m \u001b[43m                \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    638\u001b[0m \u001b[43m            \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    639\u001b[0m         )\n\u001b[0;32m    640\u001b[0m     \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mBaseException\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m e:\n\u001b[0;32m    641\u001b[0m         \u001b[38;5;28;01mif\u001b[39;00m run_managers:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_core\\language_models\\chat_models.py:851\u001b[0m, in \u001b[0;36mBaseChatModel._generate_with_cache\u001b[1;34m(self, messages, stop, run_manager, **kwargs)\u001b[0m\n\u001b[0;32m    849\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[0;32m    850\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m inspect\u001b[38;5;241m.\u001b[39msignature(\u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_generate)\u001b[38;5;241m.\u001b[39mparameters\u001b[38;5;241m.\u001b[39mget(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mrun_manager\u001b[39m\u001b[38;5;124m\"\u001b[39m):\n\u001b[1;32m--> 851\u001b[0m         result \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_generate\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    852\u001b[0m \u001b[43m            \u001b[49m\u001b[43mmessages\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mstop\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mrun_manager\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mrun_manager\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\n\u001b[0;32m    853\u001b[0m \u001b[43m        \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    854\u001b[0m     \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[0;32m    855\u001b[0m         result \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_generate(messages, stop\u001b[38;5;241m=\u001b[39mstop, \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs)\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_ollama\\chat_models.py:644\u001b[0m, in \u001b[0;36mChatOllama._generate\u001b[1;34m(self, messages, stop, run_manager, **kwargs)\u001b[0m\n\u001b[0;32m    637\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21m_generate\u001b[39m(\n\u001b[0;32m    638\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[0;32m    639\u001b[0m     messages: List[BaseMessage],\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    642\u001b[0m     \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs: Any,\n\u001b[0;32m    643\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m ChatResult:\n\u001b[1;32m--> 644\u001b[0m     final_chunk \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_chat_stream_with_aggregation\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    645\u001b[0m \u001b[43m        \u001b[49m\u001b[43mmessages\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mrun_manager\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mverbose\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mverbose\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\n\u001b[0;32m    646\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    647\u001b[0m     generation_info \u001b[38;5;241m=\u001b[39m final_chunk\u001b[38;5;241m.\u001b[39mgeneration_info\n\u001b[0;32m    648\u001b[0m     chat_generation \u001b[38;5;241m=\u001b[39m ChatGeneration(\n\u001b[0;32m    649\u001b[0m         message\u001b[38;5;241m=\u001b[39mAIMessage(\n\u001b[0;32m    650\u001b[0m             content\u001b[38;5;241m=\u001b[39mfinal_chunk\u001b[38;5;241m.\u001b[39mtext,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    654\u001b[0m         generation_info\u001b[38;5;241m=\u001b[39mgeneration_info,\n\u001b[0;32m    655\u001b[0m     )\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_ollama\\chat_models.py:545\u001b[0m, in \u001b[0;36mChatOllama._chat_stream_with_aggregation\u001b[1;34m(self, messages, stop, run_manager, verbose, **kwargs)\u001b[0m\n\u001b[0;32m    536\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21m_chat_stream_with_aggregation\u001b[39m(\n\u001b[0;32m    537\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[0;32m    538\u001b[0m     messages: List[BaseMessage],\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    542\u001b[0m     \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs: Any,\n\u001b[0;32m    543\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m ChatGenerationChunk:\n\u001b[0;32m    544\u001b[0m     final_chunk \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[1;32m--> 545\u001b[0m \u001b[43m    \u001b[49m\u001b[38;5;28;43;01mfor\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43mstream_resp\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;129;43;01min\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_create_chat_stream\u001b[49m\u001b[43m(\u001b[49m\u001b[43mmessages\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mstop\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m)\u001b[49m\u001b[43m:\u001b[49m\n\u001b[0;32m    546\u001b[0m \u001b[43m        \u001b[49m\u001b[38;5;28;43;01mif\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[38;5;129;43;01mnot\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[38;5;28;43misinstance\u001b[39;49m\u001b[43m(\u001b[49m\u001b[43mstream_resp\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43mstr\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m:\u001b[49m\n\u001b[0;32m    547\u001b[0m \u001b[43m            \u001b[49m\u001b[43mchunk\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43m \u001b[49m\u001b[43mChatGenerationChunk\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    548\u001b[0m \u001b[43m                \u001b[49m\u001b[43mmessage\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mAIMessageChunk\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    549\u001b[0m \u001b[43m                    \u001b[49m\u001b[43mcontent\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43m(\u001b[49m\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    562\u001b[0m \u001b[43m                \u001b[49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    563\u001b[0m \u001b[43m            \u001b[49m\u001b[43m)\u001b[49m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langchain_ollama\\chat_models.py:527\u001b[0m, in \u001b[0;36mChatOllama._create_chat_stream\u001b[1;34m(self, messages, stop, **kwargs)\u001b[0m\n\u001b[0;32m    517\u001b[0m     \u001b[38;5;28;01myield\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_client\u001b[38;5;241m.\u001b[39mchat(\n\u001b[0;32m    518\u001b[0m         model\u001b[38;5;241m=\u001b[39mparams[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mmodel\u001b[39m\u001b[38;5;124m\"\u001b[39m],\n\u001b[0;32m    519\u001b[0m         messages\u001b[38;5;241m=\u001b[39mollama_messages,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    524\u001b[0m         tools\u001b[38;5;241m=\u001b[39mkwargs[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mtools\u001b[39m\u001b[38;5;124m\"\u001b[39m],\n\u001b[0;32m    525\u001b[0m     )\n\u001b[0;32m    526\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[1;32m--> 527\u001b[0m     \u001b[38;5;28;01myield from\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_client\u001b[38;5;241m.\u001b[39mchat(\n\u001b[0;32m    528\u001b[0m         model\u001b[38;5;241m=\u001b[39mparams[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mmodel\u001b[39m\u001b[38;5;124m\"\u001b[39m],\n\u001b[0;32m    529\u001b[0m         messages\u001b[38;5;241m=\u001b[39mollama_messages,\n\u001b[0;32m    530\u001b[0m         stream\u001b[38;5;241m=\u001b[39m\u001b[38;5;28;01mTrue\u001b[39;00m,\n\u001b[0;32m    531\u001b[0m         options\u001b[38;5;241m=\u001b[39mOptions(\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mparams[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124moptions\u001b[39m\u001b[38;5;124m\"\u001b[39m]),\n\u001b[0;32m    532\u001b[0m         keep_alive\u001b[38;5;241m=\u001b[39mparams[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mkeep_alive\u001b[39m\u001b[38;5;124m\"\u001b[39m],\n\u001b[0;32m    533\u001b[0m         \u001b[38;5;28mformat\u001b[39m\u001b[38;5;241m=\u001b[39mparams[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mformat\u001b[39m\u001b[38;5;124m\"\u001b[39m],\n\u001b[0;32m    534\u001b[0m     )\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\ollama\\_client.py:80\u001b[0m, in \u001b[0;36mClient._stream\u001b[1;34m(self, method, url, **kwargs)\u001b[0m\n\u001b[0;32m     79\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21m_stream\u001b[39m(\u001b[38;5;28mself\u001b[39m, method: \u001b[38;5;28mstr\u001b[39m, url: \u001b[38;5;28mstr\u001b[39m, \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m Iterator[Mapping[\u001b[38;5;28mstr\u001b[39m, Any]]:\n\u001b[1;32m---> 80\u001b[0m   \u001b[38;5;28;01mwith\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_client\u001b[38;5;241m.\u001b[39mstream(method, url, \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs) \u001b[38;5;28;01mas\u001b[39;00m r:\n\u001b[0;32m     81\u001b[0m     \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m     82\u001b[0m       r\u001b[38;5;241m.\u001b[39mraise_for_status()\n",
+      "File \u001b[1;32mC:\\Python\\Python312\\Lib\\contextlib.py:137\u001b[0m, in \u001b[0;36m_GeneratorContextManager.__enter__\u001b[1;34m(self)\u001b[0m\n\u001b[0;32m    135\u001b[0m \u001b[38;5;28;01mdel\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39margs, \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mkwds, \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mfunc\n\u001b[0;32m    136\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m--> 137\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;43mnext\u001b[39;49m\u001b[43m(\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgen\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    138\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mStopIteration\u001b[39;00m:\n\u001b[0;32m    139\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m \u001b[38;5;167;01mRuntimeError\u001b[39;00m(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mgenerator didn\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mt yield\u001b[39m\u001b[38;5;124m\"\u001b[39m) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_client.py:880\u001b[0m, in \u001b[0;36mClient.stream\u001b[1;34m(self, method, url, content, data, files, json, params, headers, cookies, auth, follow_redirects, timeout, extensions)\u001b[0m\n\u001b[0;32m    857\u001b[0m \u001b[38;5;250m\u001b[39m\u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[0;32m    858\u001b[0m \u001b[38;5;124;03mAlternative to `httpx.request()` that streams the response body\u001b[39;00m\n\u001b[0;32m    859\u001b[0m \u001b[38;5;124;03minstead of loading it into memory at once.\u001b[39;00m\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    865\u001b[0m \u001b[38;5;124;03m[0]: /quickstart#streaming-responses\u001b[39;00m\n\u001b[0;32m    866\u001b[0m \u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[0;32m    867\u001b[0m request \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mbuild_request(\n\u001b[0;32m    868\u001b[0m     method\u001b[38;5;241m=\u001b[39mmethod,\n\u001b[0;32m    869\u001b[0m     url\u001b[38;5;241m=\u001b[39murl,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    878\u001b[0m     extensions\u001b[38;5;241m=\u001b[39mextensions,\n\u001b[0;32m    879\u001b[0m )\n\u001b[1;32m--> 880\u001b[0m response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43msend\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    881\u001b[0m \u001b[43m    \u001b[49m\u001b[43mrequest\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    882\u001b[0m \u001b[43m    \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    883\u001b[0m \u001b[43m    \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    884\u001b[0m \u001b[43m    \u001b[49m\u001b[43mstream\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43;01mTrue\u001b[39;49;00m\u001b[43m,\u001b[49m\n\u001b[0;32m    885\u001b[0m \u001b[43m\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    886\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    887\u001b[0m     \u001b[38;5;28;01myield\u001b[39;00m response\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_client.py:926\u001b[0m, in \u001b[0;36mClient.send\u001b[1;34m(self, request, stream, auth, follow_redirects)\u001b[0m\n\u001b[0;32m    922\u001b[0m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_set_timeout(request)\n\u001b[0;32m    924\u001b[0m auth \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_build_request_auth(request, auth)\n\u001b[1;32m--> 926\u001b[0m response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_handling_auth\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    927\u001b[0m \u001b[43m    \u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    928\u001b[0m \u001b[43m    \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    929\u001b[0m \u001b[43m    \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    930\u001b[0m \u001b[43m    \u001b[49m\u001b[43mhistory\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43m[\u001b[49m\u001b[43m]\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    931\u001b[0m \u001b[43m\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    932\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    933\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m stream:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_client.py:954\u001b[0m, in \u001b[0;36mClient._send_handling_auth\u001b[1;34m(self, request, auth, follow_redirects, history)\u001b[0m\n\u001b[0;32m    951\u001b[0m request \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mnext\u001b[39m(auth_flow)\n\u001b[0;32m    953\u001b[0m \u001b[38;5;28;01mwhile\u001b[39;00m \u001b[38;5;28;01mTrue\u001b[39;00m:\n\u001b[1;32m--> 954\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_handling_redirects\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    955\u001b[0m \u001b[43m        \u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    956\u001b[0m \u001b[43m        \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    957\u001b[0m \u001b[43m        \u001b[49m\u001b[43mhistory\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mhistory\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    958\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    959\u001b[0m     \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    960\u001b[0m         \u001b[38;5;28;01mtry\u001b[39;00m:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_client.py:991\u001b[0m, in \u001b[0;36mClient._send_handling_redirects\u001b[1;34m(self, request, follow_redirects, history)\u001b[0m\n\u001b[0;32m    988\u001b[0m \u001b[38;5;28;01mfor\u001b[39;00m hook \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_event_hooks[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mrequest\u001b[39m\u001b[38;5;124m\"\u001b[39m]:\n\u001b[0;32m    989\u001b[0m     hook(request)\n\u001b[1;32m--> 991\u001b[0m response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_single_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    992\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    993\u001b[0m     \u001b[38;5;28;01mfor\u001b[39;00m hook \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_event_hooks[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mresponse\u001b[39m\u001b[38;5;124m\"\u001b[39m]:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_client.py:1027\u001b[0m, in \u001b[0;36mClient._send_single_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m   1022\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m \u001b[38;5;167;01mRuntimeError\u001b[39;00m(\n\u001b[0;32m   1023\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mAttempted to send an async request with a sync Client instance.\u001b[39m\u001b[38;5;124m\"\u001b[39m\n\u001b[0;32m   1024\u001b[0m     )\n\u001b[0;32m   1026\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m request_context(request\u001b[38;5;241m=\u001b[39mrequest):\n\u001b[1;32m-> 1027\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[43mtransport\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m   1029\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(response\u001b[38;5;241m.\u001b[39mstream, SyncByteStream)\n\u001b[0;32m   1031\u001b[0m response\u001b[38;5;241m.\u001b[39mrequest \u001b[38;5;241m=\u001b[39m request\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_transports\\default.py:235\u001b[0m, in \u001b[0;36mHTTPTransport.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    221\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(request\u001b[38;5;241m.\u001b[39mstream, SyncByteStream)\n\u001b[0;32m    223\u001b[0m req \u001b[38;5;241m=\u001b[39m httpcore\u001b[38;5;241m.\u001b[39mRequest(\n\u001b[0;32m    224\u001b[0m     method\u001b[38;5;241m=\u001b[39mrequest\u001b[38;5;241m.\u001b[39mmethod,\n\u001b[0;32m    225\u001b[0m     url\u001b[38;5;241m=\u001b[39mhttpcore\u001b[38;5;241m.\u001b[39mURL(\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    233\u001b[0m     extensions\u001b[38;5;241m=\u001b[39mrequest\u001b[38;5;241m.\u001b[39mextensions,\n\u001b[0;32m    234\u001b[0m )\n\u001b[1;32m--> 235\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m map_httpcore_exceptions():\n\u001b[0;32m    236\u001b[0m     resp \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_pool\u001b[38;5;241m.\u001b[39mhandle_request(req)\n\u001b[0;32m    238\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(resp\u001b[38;5;241m.\u001b[39mstream, typing\u001b[38;5;241m.\u001b[39mIterable)\n",
+      "File \u001b[1;32mC:\\Python\\Python312\\Lib\\contextlib.py:158\u001b[0m, in \u001b[0;36m_GeneratorContextManager.__exit__\u001b[1;34m(self, typ, value, traceback)\u001b[0m\n\u001b[0;32m    156\u001b[0m     value \u001b[38;5;241m=\u001b[39m typ()\n\u001b[0;32m    157\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m--> 158\u001b[0m     \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgen\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mthrow\u001b[49m\u001b[43m(\u001b[49m\u001b[43mvalue\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    159\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mStopIteration\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n\u001b[0;32m    160\u001b[0m     \u001b[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001b[39;00m\n\u001b[0;32m    161\u001b[0m     \u001b[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001b[39;00m\n\u001b[0;32m    162\u001b[0m     \u001b[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001b[39;00m\n\u001b[0;32m    163\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m exc \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m value\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\httpx\\_transports\\default.py:89\u001b[0m, in \u001b[0;36mmap_httpcore_exceptions\u001b[1;34m()\u001b[0m\n\u001b[0;32m     86\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m\n\u001b[0;32m     88\u001b[0m message \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mstr\u001b[39m(exc)\n\u001b[1;32m---> 89\u001b[0m \u001b[38;5;28;01mraise\u001b[39;00m mapped_exc(message) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mexc\u001b[39;00m\n",
+      "\u001b[1;31mConnectError\u001b[0m: [WinError 10061] No connection could be made because the target machine actively refused it"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.\n",
+      "Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.\n"
+     ]
+    }
+   ],
+   "source": [
+    "### Router\n",
+    "import json\n",
+    "from langchain_core.messages import HumanMessage, SystemMessage\n",
+    "\n",
+    "# Prompt\n",
+    "router_instructions = \"\"\"You are an expert at routing a user question to a vectorstore or web search.\n",
+    "\n",
+    "The vectorstore contains documents related to refine.dev framework.\n",
+    "\n",
+    "Use the vectorstore for questions on these topics. For all else, and especially for current events, use web-search.\n",
+    "\n",
+    "Return JSON with single key, datasource, that is 'websearch' or 'vectorstore' depending on the question.\"\"\"\n",
+    "\n",
+    "# Test router\n",
+    "test_web_search = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=router_instructions)]\n",
+    "    + [\n",
+    "        HumanMessage(\n",
+    "            content=\"Who is favored to win the NFC Championship game in the 2024 season?\"\n",
+    "        )\n",
+    "    ]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}\n",
+    ")\n",
+    "test_web_search_2 = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=router_instructions)]\n",
+    "    + [HumanMessage(content=\"What are the models released today for llama3.2?\")]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}, \n",
+    ")\n",
+    "test_vector_store = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=router_instructions)]\n",
+    "    + [HumanMessage(content=\"What are the types of data in refine.dev framework?\")]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}\n",
+    ")\n",
+    "print(\n",
+    "    json.loads(test_web_search.content),\n",
+    "    json.loads(test_web_search_2.content),\n",
+    "    json.loads(test_vector_store.content),\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "{'binary_score': 'yes'}"
+      ]
+     },
+     "execution_count": 11,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "### Retrieval Grader\n",
+    "\n",
+    "# Doc grader instructions\n",
+    "doc_grader_instructions = \"\"\"You are a grader assessing relevance of a retrieved document to a user question.\n",
+    "\n",
+    "If the document contains keyword(s) or semantic meaning related to the question, grade it as relevant.\"\"\"\n",
+    "\n",
+    "# Grader prompt\n",
+    "doc_grader_prompt = \"\"\"Here is the retrieved document: \\n\\n {document} \\n\\n Here is the user question: \\n\\n {question}. \n",
+    "\n",
+    "This carefully and objectively assess whether the document contains at least some information that is relevant to the question.\n",
+    "\n",
+    "Return JSON with single key, binary_score, that is 'yes' or 'no' score to indicate whether the document contains at least some information that is relevant to the question.\"\"\"\n",
+    "\n",
+    "# Test\n",
+    "question = \"What stack is used in data fetching in refine.dev?\"\n",
+    "docs = retriever.invoke(question)\n",
+    "doc_txt = docs[1].page_content\n",
+    "doc_grader_prompt_formatted = doc_grader_prompt.format(\n",
+    "    document=doc_txt, question=question\n",
+    ")\n",
+    "result = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=doc_grader_instructions)]\n",
+    "    + [HumanMessage(content=doc_grader_prompt_formatted)]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}\n",
+    ")\n",
+    "json.loads(result.content)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Refine uses TanStack Query under the hood for managing state during data fetching. Specifically, it utilizes a structured key format to identify and cache server responses for queries and mutations. This allows users to have full control over the cache and invalidation behavior of their applications.\n"
+     ]
+    }
+   ],
+   "source": [
+    "### Generate\n",
+    "\n",
+    "# Prompt\n",
+    "rag_prompt = \"\"\"You are an assistant for question-answering tasks. \n",
+    "\n",
+    "Here is the context to use to answer the question:\n",
+    "\n",
+    "{context} \n",
+    "\n",
+    "Think carefully about the above context. \n",
+    "\n",
+    "Now, review the user question:\n",
+    "\n",
+    "{question}\n",
+    "\n",
+    "Provide an answer to this questions using only the above context. \n",
+    "\n",
+    "Use three sentences maximum and keep the answer concise.\n",
+    "\n",
+    "Answer:\"\"\"\n",
+    "\n",
+    "\n",
+    "# Post-processing\n",
+    "def format_docs(docs):\n",
+    "    return \"\\n\\n\".join(doc.page_content for doc in docs)\n",
+    "\n",
+    "\n",
+    "# Test\n",
+    "docs = retriever.invoke(question)\n",
+    "docs_txt = format_docs(docs)\n",
+    "rag_prompt_formatted = rag_prompt.format(context=docs_txt, question=question)\n",
+    "generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)], config={\"callbacks\": [langfuse_handler]})\n",
+    "print(generation.content)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "{'binary_score': 'yes',\n",
+       " 'explanation': \"The answer is grounded in facts because it correctly identifies Refine's data management approach and its use of TanStack Query for managing state during data fetching.\"}"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "### Hallucination Grader\n",
+    "\n",
+    "# Hallucination grader instructions\n",
+    "hallucination_grader_instructions = \"\"\"\n",
+    "\n",
+    "You are a teacher grading a quiz. \n",
+    "\n",
+    "You will be given FACTS and a STUDENT ANSWER. \n",
+    "\n",
+    "Here is the grade criteria to follow:\n",
+    "\n",
+    "(1) Ensure the STUDENT ANSWER is grounded in the FACTS. \n",
+    "\n",
+    "(2) Ensure the STUDENT ANSWER does not contain \"hallucinated\" information outside the scope of the FACTS.\n",
+    "\n",
+    "Score:\n",
+    "\n",
+    "A score of yes means that the student's answer meets all of the criteria. This is the highest (best) score. \n",
+    "\n",
+    "A score of no means that the student's answer does not meet all of the criteria. This is the lowest possible score you can give.\n",
+    "\n",
+    "Explain your reasoning in a step-by-step manner to ensure your reasoning and conclusion are correct. \n",
+    "\n",
+    "Avoid simply stating the correct answer at the outset.\"\"\"\n",
+    "\n",
+    "# Grader prompt\n",
+    "hallucination_grader_prompt = \"\"\"FACTS: \\n\\n {documents} \\n\\n STUDENT ANSWER: {generation}. \n",
+    "\n",
+    "Return JSON with two two keys, binary_score is 'yes' or 'no' score to indicate whether the STUDENT ANSWER is grounded in the FACTS. And a key, explanation, that contains an explanation of the score.\"\"\"\n",
+    "\n",
+    "# Test using documents and generation from above\n",
+    "hallucination_grader_prompt_formatted = hallucination_grader_prompt.format(\n",
+    "    documents=docs_txt, generation=generation.content\n",
+    ")\n",
+    "result = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=hallucination_grader_instructions)]\n",
+    "    + [HumanMessage(content=hallucination_grader_prompt_formatted)]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}\n",
+    ")\n",
+    "json.loads(result.content)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "{'binary_score': 'yes',\n",
+       " 'explanation': \"The student's answer helps to answer the question by providing specific details about the vision models released as part of Llama 3.2. The answer mentions two vision models (Llama 3.2 11B Vision Instruct and Llama 3.2 90B Vision Instruct) and their availability on Azure AI Model Catalog via managed compute. Additionally, the student provides context about Meta's first foray into multimodal AI and compares these models to other visual reasoning models like Claude 3 Haiku and GPT-4o mini. The answer also mentions that these models replace the older text-only Llama 3.1 models, which meets all of the criteria specified in the question.\"}"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "### Answer Grader\n",
+    "\n",
+    "# Answer grader instructions\n",
+    "answer_grader_instructions = \"\"\"You are a teacher grading a quiz. \n",
+    "\n",
+    "You will be given a QUESTION and a STUDENT ANSWER. \n",
+    "\n",
+    "Here is the grade criteria to follow:\n",
+    "\n",
+    "(1) The STUDENT ANSWER helps to answer the QUESTION\n",
+    "\n",
+    "Score:\n",
+    "\n",
+    "A score of yes means that the student's answer meets all of the criteria. This is the highest (best) score. \n",
+    "\n",
+    "The student can receive a score of yes if the answer contains extra information that is not explicitly asked for in the question.\n",
+    "\n",
+    "A score of no means that the student's answer does not meet all of the criteria. This is the lowest possible score you can give.\n",
+    "\n",
+    "Explain your reasoning in a step-by-step manner to ensure your reasoning and conclusion are correct. \n",
+    "\n",
+    "Avoid simply stating the correct answer at the outset.\"\"\"\n",
+    "\n",
+    "# Grader prompt\n",
+    "answer_grader_prompt = \"\"\"QUESTION: \\n\\n {question} \\n\\n STUDENT ANSWER: {generation}. \n",
+    "\n",
+    "Return JSON with two two keys, binary_score is 'yes' or 'no' score to indicate whether the STUDENT ANSWER meets the criteria. And a key, explanation, that contains an explanation of the score.\"\"\"\n",
+    "\n",
+    "# Test\n",
+    "question = \"What are the vision models released today as part of Llama 3.2?\"\n",
+    "answer = \"The Llama 3.2 models released today include two vision models: Llama 3.2 11B Vision Instruct and Llama 3.2 90B Vision Instruct, which are available on Azure AI Model Catalog via managed compute. These models are part of Meta's first foray into multimodal AI and rival closed models like Anthropic's Claude 3 Haiku and OpenAI's GPT-4o mini in visual reasoning. They replace the older text-only Llama 3.1 models.\"\n",
+    "\n",
+    "# Test using question and generation from above\n",
+    "answer_grader_prompt_formatted = answer_grader_prompt.format(\n",
+    "    question=question, generation=answer\n",
+    ")\n",
+    "result = llm_json_mode.invoke(\n",
+    "    [SystemMessage(content=answer_grader_instructions)]\n",
+    "    + [HumanMessage(content=answer_grader_prompt_formatted)]\n",
+    "    , config={\"callbacks\": [langfuse_handler]}\n",
+    ")\n",
+    "json.loads(result.content)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "\n",
+    "from langchain_community.tools.searx_search.tool import SearxSearchWrapper, SearxSearchResults\n",
+    "\n",
+    "name=\"Execute Query Tool\"\n",
+    "description=\"Useful for executing a query against a search engine. Returns the results of the query.\"\n",
+    "\n",
+    "search = SearxSearchWrapper(searx_host=\"http://localhost:8080\", unsecure=True)\n",
+    "\n",
+    "web_search_tool = SearxSearchResults(num_results=3, wrapper=search)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import operator\n",
+    "from typing_extensions import TypedDict\n",
+    "from typing import List, Annotated\n",
+    "import json\n",
+    "\n",
+    "\n",
+    "class GraphState(TypedDict):\n",
+    "    \"\"\"\n",
+    "    Graph state is a dictionary that contains information we want to propagate to, and modify in, each graph node.\n",
+    "    \"\"\"\n",
+    "\n",
+    "    question: str  # User question\n",
+    "    generation: str  # LLM generation\n",
+    "    web_search: str  # Binary decision to run web search\n",
+    "    max_retries: int  # Max number of retries for answer generation\n",
+    "    answers: int  # Number of answers generated\n",
+    "    loop_step: Annotated[int, operator.add]\n",
+    "    documents: List[str]  # List of retrieved documents"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from langchain.schema import Document\n",
+    "from langgraph.graph import END\n",
+    "from pydantic import Json\n",
+    "\n",
+    "\n",
+    "### Nodes\n",
+    "def retrieve(state):\n",
+    "    \"\"\"\n",
+    "    Retrieve documents from vectorstore\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        state (dict): New key added to state, documents, that contains retrieved documents\n",
+    "    \"\"\"\n",
+    "    print(\"---RETRIEVE---\")\n",
+    "    question = state[\"question\"]\n",
+    "\n",
+    "    # Write retrieved documents to documents key in state\n",
+    "    documents = retriever.invoke(question)\n",
+    "    return {\"documents\": documents}\n",
+    "\n",
+    "\n",
+    "def generate(state):\n",
+    "    \"\"\"\n",
+    "    Generate answer using RAG on retrieved documents\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        state (dict): New key added to state, generation, that contains LLM generation\n",
+    "    \"\"\"\n",
+    "    print(\"---GENERATE---\")\n",
+    "    question = state[\"question\"]\n",
+    "    documents = state[\"documents\"]\n",
+    "    loop_step = state.get(\"loop_step\", 0)\n",
+    "\n",
+    "    # RAG generation\n",
+    "    docs_txt = format_docs(documents)\n",
+    "    rag_prompt_formatted = rag_prompt.format(context=docs_txt, question=question)\n",
+    "    generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)], config={\"callbacks\": [langfuse_handler]}, )\n",
+    "    return {\"generation\": generation, \"loop_step\": loop_step + 1}\n",
+    "\n",
+    "\n",
+    "def grade_documents(state):\n",
+    "    \"\"\"\n",
+    "    Determines whether the retrieved documents are relevant to the question\n",
+    "    If any document is not relevant, we will set a flag to run web search\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        state (dict): Filtered out irrelevant documents and updated web_search state\n",
+    "    \"\"\"\n",
+    "\n",
+    "    print(\"---CHECK DOCUMENT RELEVANCE TO QUESTION---\")\n",
+    "    question = state[\"question\"]\n",
+    "    documents = state[\"documents\"]\n",
+    "\n",
+    "    # Score each doc\n",
+    "    filtered_docs = []\n",
+    "    web_search = \"No\"\n",
+    "    for d in documents:\n",
+    "        doc_grader_prompt_formatted = doc_grader_prompt.format(\n",
+    "            document=d.page_content, question=question\n",
+    "        )\n",
+    "        result = llm_json_mode.invoke(\n",
+    "            [SystemMessage(content=doc_grader_instructions)]\n",
+    "            + [HumanMessage(content=doc_grader_prompt_formatted)]\n",
+    "            , config={\"callbacks\": [langfuse_handler]}, \n",
+    "        )\n",
+    "        grade = json.loads(result.content)[\"binary_score\"]\n",
+    "        # Document relevant\n",
+    "        if grade.lower() == \"yes\":\n",
+    "            print(\"---GRADE: DOCUMENT RELEVANT---\")\n",
+    "            filtered_docs.append(d)\n",
+    "        # Document not relevant\n",
+    "        else:\n",
+    "            print(\"---GRADE: DOCUMENT NOT RELEVANT---\")\n",
+    "            # We do not include the document in filtered_docs\n",
+    "            # We set a flag to indicate that we want to run web search\n",
+    "            web_search = \"Yes\"\n",
+    "            continue\n",
+    "    return {\"documents\": filtered_docs, \"web_search\": web_search}\n",
+    "\n",
+    "\n",
+    "def web_search(state):\n",
+    "    \"\"\"\n",
+    "    Web search based based on the question\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        state (dict): Appended web results to documents\n",
+    "    \"\"\"\n",
+    "\n",
+    "    print(\"---WEB SEARCH---\")\n",
+    "    question = state[\"question\"]\n",
+    "    documents = state.get(\"documents\", [])\n",
+    "\n",
+    "    # Web search\n",
+    "    docs = web_search_tool.invoke({\"query\": question})\n",
+    "    # doc_json = json.loads(docs)\n",
+    "    web_results = \"\\n\".join([d[\"snippet\"] for d in docs])\n",
+    "    web_results = Document(page_content=web_results)\n",
+    "    documents.append(web_results)\n",
+    "    return {\"documents\": documents}\n",
+    "\n",
+    "\n",
+    "### Edges\n",
+    "\n",
+    "\n",
+    "def route_question(state):\n",
+    "    \"\"\"\n",
+    "    Route question to web search or RAG\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        str: Next node to call\n",
+    "    \"\"\"\n",
+    "\n",
+    "    print(\"---ROUTE QUESTION---\")\n",
+    "    route_question = llm_json_mode.invoke(\n",
+    "        [SystemMessage(content=router_instructions)]\n",
+    "        + [HumanMessage(content=state[\"question\"])]\n",
+    "        , config={\"callbacks\": [langfuse_handler]}, \n",
+    "    )\n",
+    "    source = json.loads(route_question.content)[\"datasource\"]\n",
+    "    if source == \"websearch\":\n",
+    "        print(\"---ROUTE QUESTION TO WEB SEARCH---\")\n",
+    "        return \"websearch\"\n",
+    "    elif source == \"vectorstore\":\n",
+    "        print(\"---ROUTE QUESTION TO RAG---\")\n",
+    "        return \"vectorstore\"\n",
+    "\n",
+    "\n",
+    "def decide_to_generate(state):\n",
+    "    \"\"\"\n",
+    "    Determines whether to generate an answer, or add web search\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        str: Binary decision for next node to call\n",
+    "    \"\"\"\n",
+    "\n",
+    "    print(\"---ASSESS GRADED DOCUMENTS---\")\n",
+    "    question = state[\"question\"]\n",
+    "    web_search = state[\"web_search\"]\n",
+    "    filtered_documents = state[\"documents\"]\n",
+    "\n",
+    "    if web_search == \"Yes\":\n",
+    "        # All documents have been filtered check_relevance\n",
+    "        # We will re-generate a new query\n",
+    "        print(\n",
+    "            \"---DECISION: NOT ALL DOCUMENTS ARE RELEVANT TO QUESTION, INCLUDE WEB SEARCH---\"\n",
+    "        )\n",
+    "        return \"websearch\"\n",
+    "    else:\n",
+    "        # We have relevant documents, so generate answer\n",
+    "        print(\"---DECISION: GENERATE---\")\n",
+    "        return \"generate\"\n",
+    "\n",
+    "\n",
+    "def grade_generation_v_documents_and_question(state):\n",
+    "    \"\"\"\n",
+    "    Determines whether the generation is grounded in the document and answers question\n",
+    "\n",
+    "    Args:\n",
+    "        state (dict): The current graph state\n",
+    "\n",
+    "    Returns:\n",
+    "        str: Decision for next node to call\n",
+    "    \"\"\"\n",
+    "\n",
+    "    print(\"---CHECK HALLUCINATIONS---\")\n",
+    "    question = state[\"question\"]\n",
+    "    documents = state[\"documents\"]\n",
+    "    generation = state[\"generation\"]\n",
+    "    max_retries = state.get(\"max_retries\", 3)  # Default to 3 if not provided\n",
+    "\n",
+    "    hallucination_grader_prompt_formatted = hallucination_grader_prompt.format(\n",
+    "        documents=format_docs(documents), generation=generation.content\n",
+    "    )\n",
+    "    result = llm_json_mode.invoke(\n",
+    "        [SystemMessage(content=hallucination_grader_instructions)]\n",
+    "        + [HumanMessage(content=hallucination_grader_prompt_formatted)]\n",
+    "        , config={\"callbacks\": [langfuse_handler]}, \n",
+    "    )\n",
+    "    grade = json.loads(result.content)[\"binary_score\"]\n",
+    "\n",
+    "    # Check hallucination\n",
+    "    if grade == \"yes\":\n",
+    "        print(\"---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---\")\n",
+    "        # Check question-answering\n",
+    "        print(\"---GRADE GENERATION vs QUESTION---\")\n",
+    "        # Test using question and generation from above\n",
+    "        answer_grader_prompt_formatted = answer_grader_prompt.format(\n",
+    "            question=question, generation=generation.content\n",
+    "        )\n",
+    "        result = llm_json_mode.invoke(\n",
+    "            [SystemMessage(content=answer_grader_instructions)]\n",
+    "            + [HumanMessage(content=answer_grader_prompt_formatted)]\n",
+    "            , config={\"callbacks\": [langfuse_handler]}, \n",
+    "        )\n",
+    "        grade = json.loads(result.content)[\"binary_score\"]\n",
+    "        if grade == \"yes\":\n",
+    "            print(\"---DECISION: GENERATION ADDRESSES QUESTION---\")\n",
+    "            return \"useful\"\n",
+    "        elif state[\"loop_step\"] <= max_retries:\n",
+    "            print(\"---DECISION: GENERATION DOES NOT ADDRESS QUESTION---\")\n",
+    "            return \"not useful\"\n",
+    "        else:\n",
+    "            print(\"---DECISION: MAX RETRIES REACHED---\")\n",
+    "            return \"max retries\"\n",
+    "    elif state[\"loop_step\"] <= max_retries:\n",
+    "        print(\"---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---\")\n",
+    "        return \"not supported\"\n",
+    "    else:\n",
+    "        print(\"---DECISION: MAX RETRIES REACHED---\")\n",
+    "        return \"max retries\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "ModuleNotFoundError",
+     "evalue": "No module named 'langgraph'",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[1;31mModuleNotFoundError\u001b[0m                       Traceback (most recent call last)",
+      "Cell \u001b[1;32mIn[3], line 1\u001b[0m\n\u001b[1;32m----> 1\u001b[0m \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mlanggraph\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mgraph\u001b[39;00m \u001b[38;5;28;01mimport\u001b[39;00m StateGraph\n\u001b[0;32m      2\u001b[0m \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mIPython\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mdisplay\u001b[39;00m \u001b[38;5;28;01mimport\u001b[39;00m Image, display\n\u001b[0;32m      4\u001b[0m workflow \u001b[38;5;241m=\u001b[39m StateGraph(GraphState)\n",
+      "\u001b[1;31mModuleNotFoundError\u001b[0m: No module named 'langgraph'"
+     ]
+    }
+   ],
+   "source": [
+    "from langgraph.graph import StateGraph\n",
+    "from IPython.display import Image, display\n",
+    "\n",
+    "workflow = StateGraph(GraphState)\n",
+    "\n",
+    "# Define the nodes\n",
+    "workflow.add_node(\"websearch\", web_search)  # web search\n",
+    "workflow.add_node(\"retrieve\", retrieve)  # retrieve\n",
+    "workflow.add_node(\"grade_documents\", grade_documents)  # grade documents\n",
+    "workflow.add_node(\"generate\", generate)  # generate\n",
+    "\n",
+    "# Build graph\n",
+    "workflow.set_conditional_entry_point(\n",
+    "    route_question,\n",
+    "    {\n",
+    "        \"websearch\": \"websearch\",\n",
+    "        \"vectorstore\": \"retrieve\",\n",
+    "    },\n",
+    ")\n",
+    "workflow.add_edge(\"websearch\", \"generate\")\n",
+    "workflow.add_edge(\"retrieve\", \"grade_documents\")\n",
+    "workflow.add_conditional_edges(\n",
+    "    \"grade_documents\",\n",
+    "    decide_to_generate,\n",
+    "    {\n",
+    "        \"websearch\": \"websearch\",\n",
+    "        \"generate\": \"generate\",\n",
+    "    },\n",
+    ")\n",
+    "workflow.add_conditional_edges(\n",
+    "    \"generate\",\n",
+    "    grade_generation_v_documents_and_question,\n",
+    "    {\n",
+    "        \"not supported\": \"generate\",\n",
+    "        \"useful\": END,\n",
+    "        \"not useful\": \"websearch\",\n",
+    "        \"max retries\": END,\n",
+    "    },\n",
+    ")\n",
+    "\n",
+    "# Compile\n",
+    "graph = workflow.compile()\n",
+    "display(Image(graph.get_graph().draw_mermaid_png()))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 77,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "\"[{'snippet': 'Today, we’re releasing Llama 3.2, which includes small and medium-sized vision LLMs (11B and 90B), and lightweight, text-only models (1B and 3B) that fit onto edge and mobile devices, including pre-trained and instruction-tuned versions. The Llama 3.2 1B and 3B models support context length of 128K tokens and are state-of-the-art in their ...', 'title': 'Llama 3.2: Revolutionizing edge AI and vision with open, ...', 'link': 'https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/', 'engines': ['brave', 'google', 'qwant'], 'category': 'general'}, {'snippet': '1 month ago - The lightweight 1B and 3B models are particularly noteworthy for their ability to run on mobile devices, offering instant responses and enhanced privacy by processing data locally. These models are also capable of tool calling, making them ideal for personalized, on-device applications.', 'title': 'Meta Releases Llama 3.2 with Vision, Voice, and Open ...', 'link': 'https://www.infoq.com/news/2024/10/llama-3-2-multimodal/', 'engines': ['brave', 'google', 'qwant'], 'category': 'general'}, {'snippet': 'Meta AI has announced the release of Llama 3.2, which introduces the first multimodal models in the series. Llama 3.2 focuses on two key areas: Vision-enabled LLMs: The 11B and 90B parameter multimodal models can now process and understand both text and images. Lightweight LLMs for edge and mobile: The 1B and 3B parameter models are designed to be lightweight and efficient, allowing them to ...', 'title': 'Llama 3.2 Guide: How It Works, Use Cases & More', 'link': 'https://www.datacamp.com/blog/llama-3-2', 'engines': ['brave', 'google', 'qwant'], 'category': 'general'}]\""
+      ]
+     },
+     "execution_count": 77,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "q = web_search_tool.invoke({\"query\": question, \"format\": \"json\"})\n",
+    "q"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 74,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'What are the vision models released today as part of Llama 3.2?'"
+      ]
+     },
+     "execution_count": 74,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "question"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 52,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "---ROUTE QUESTION---\n",
+      "---ROUTE QUESTION TO RAG---\n",
+      "{'question': 'What are the types of hooks in refine.dev data fetching?', 'max_retries': 3, 'loop_step': 0}\n",
+      "---RETRIEVE---\n",
+      "{'question': 'What are the types of hooks in refine.dev data fetching?', 'max_retries': 3, 'loop_step': 0, 'documents': [Document(metadata={'id': 'b4238ef3-d946-4584-be69-0ed90916f5ec', 'source': 'https://refine.dev/docs/guides-concepts/data-fetching/', 'title': 'Data Fetching | Refine', 'description': 'Data is essential for any UI Application and these applications are a bridge between users and the underlying data source(s), making it possible for users to interact with data in a meaningful way.', 'language': 'en'}, page_content='});Refine offers various data hooks for CRUD operations, you can see the list of these hooks below:HookMethodDescriptionuseOnegetOneget a single record.useUpdateupdateupdate an existing record.useCreatecreatecreate a new record.useDeletedeleteOnedelete a single record.useList or useInfiniteListgetListget a list of records.useApiUrlgetApiUrlget the API URL.useCustomcustommaking custom API requests.useManygetManyget multiple records.useCreateManycreateManycreate multiple records.useDeleteManydeleteManydelete multiple records.useUpdateManyupdateManyupdate multiple records.Was this helpful?Thumbs UpThumbs DownHow Refine treats data and state?\\u200bData hooks uses TanStack Query under the hood. It takes care of managing the state for you. It provides data, isLoading, and error states to help you handle loading, success, and error scenarios gracefully.Refine treats data and state in a structured and efficient manner, providing developers with powerful tools to manage data seamlessly within their applications. Here are some key aspects of how Refine treats data and state:Resource-Based Approach: Organizes data around resources, which are essentially models representing different data entities or API endpoints. These resources help structure your application\\'s data management.Invalidation: Automatically invalidates data after a successful mutation (e.g., creating, updating, or deleting a resource), ensuring that the UI is updated with the latest data.Caching: Caches data to improve performance and deduplicates API calls.Optimistic Updates: Supports optimistic updates, which means it will update the UI optimistically before the actual API call is complete. This enhances the user experience by reducing perceived latency.Hooks for CRUD Operations: Offers a collection of hooks that align with common data operations like listing, creating, updating, and deleting data (useList, useCreate, useUpdate, useDelete). In addition to these basic hooks, Refine provides advanced hooks that are a composition of these fundamental ones for handling more complex tasks (useForm, useTable, useSelect).Integration with UI Libraries: Works seamlessly with popular UI libraries. It provides a structured approach to represent data within these libraries.Realtime Updates: Allowing your application to reflect changes in data as they occur.Was this helpful?Thumbs UpThumbs DownMeta usage Check the guidePlease check the guide for more information on this topic.\\u200bmeta is a special property that can be used to pass additional information to your data provider methods through data hooks like useOne, useList, useForm from anywhere across your application.The capabilities of meta properties depend on your data provider\\'s implementation. While some may use additional features through meta, others may not use them or follow a different approach.Here are some examples of meta usage:Passing additional headers or parameters to the request.Generate GraphQL queries.Multi-tenancy support (passing the tenant id to the request).In the example below, we are passing meta.foo property to the useOne hook. Then, we are using this property to pass additional headers to the request.import { DataProvider, useOne } from \"@refinedev/core\";useOne({    resource: \"products\",    id: 1,    meta: {        foo: \"bar\",    },});export const dataProvider = (apiUrl: string): DataProvider => ({    getOne: async ({ resource, id, meta }) => {        const response = await fetch(`${apiUrl}/${resource}/${id}`, {            headers: {                \"x-foo\": meta.foo,            },        });        const data = await response.json();        return {            data,        };    },    ...});Was this helpful?Thumbs UpThumbs DownGraphQL\\u200bRefine\\'s meta property has gqlQuery and gqlMutation fields, which accepts GraphQL operation as graphql\\'s DocumentNode type.You can use these fields to pass GraphQL queries or mutations to your data provider methods through data hooks like useOne, useList, useForm from anywhere across your application.Easiest way to generate GraphQL queries is to use graphql-tag package.import gql from \"graphql-tag\";import { useOne, useUpdate } from \"@refinedev/core\";const'), Document(metadata={'id': '29492e40-0d1d-4d22-98cf-3e62110491a9', 'source': 'https://refine.dev/docs/guides-concepts/data-fetching/', 'title': 'Data Fetching | Refine', 'description': 'Data is essential for any UI Application and these applications are a bridge between users and the underlying data source(s), making it possible for users to interact with data in a meaningful way.', 'language': 'en'}, page_content='Data Fetching | Refine'), Document(metadata={'id': '14342fc9-a3b4-43d0-a096-9a3e976e82f1', 'source': 'https://refine.dev/docs/guides-concepts/data-fetching/', 'title': 'Data Fetching | Refine', 'description': 'Data is essential for any UI Application and these applications are a bridge between users and the underlying data source(s), making it possible for users to interact with data in a meaningful way.', 'language': 'en'}, page_content='This flexibility is handy when dealing with various data structures and APIs.For example, we want to fetch:products from https://api.finefoods.refine.devuser from https://api.fake-rest.refine.dev.As you can see the example below:We are defining multiple data providers in App.tsx.Using dataProviderName field to specify which data provider to use in data hooks in home-page.tsx.App.tsxhome-page.tsxdata-provider.tsimport { useOne } from \"@refinedev/core\";'), Document(metadata={'id': '390642b8-35b7-4871-945c-3da3ad50f7ce', 'source': 'https://refine.dev/docs/guides-concepts/general-concepts/', 'title': 'General Concepts | Refine', 'description': 'Refine is an extensible framework designed for rapidly building web applications. It offers a modern, hook-based architecture, a pluggable system of providers, and a robust state management solution. This section provides an overview of the key concepts in Refine.', 'language': 'en'}, page_content='recordItemId={1} />    </>  );};This applies to all buttons like CreateButton, EditButton, ShowButton, ListButton.Was this helpful?Thumbs UpThumbs DownNotification Provider Check the guidePlease check the guide for more information on this topic.\\u200bRefine can automatically show notifications for CRUD operations and errors.For example, after creating, updating, or deleting a record for products resource, or when an error occurs on form submission.Refine has out-of-the-box notification providers for popular UI libraries like Ant Design, Material UI, Chakra UI, and Mantine.Was this helpful?Thumbs UpThumbs DownHooks\\u200bOur data hooks, mutation hooks, and auth hooks can automatically show notifications for actions and errors.It\\'s also possible to modify these notifications per hook.my-page.tsximport { useDelete } from \"@refinedev/core\";export const MyPage = () => {  const { mutate } = useDelete();  return (    <Button      onClick={() => {        mutate({          resource: \"products\",          id: 1,          successNotification: () => ({            message: \"Product Deleted\",            description: \"Product has been deleted successfully.\",            type: \"success\",          }),          errorNotification: () => ({            message: \"Product Delete Error\",            description: \"An error occurred while deleting the product.\",            type: \"error\",          }),        });      }}    >      Delete Product    </Button>  );};If you have a use-case that isn\\'t covered, you can use useNotification hook to show notifications in your application.my-page.tsximport { useNotification } from \"@refinedev/core\";export const MyPage = () => {  const { open, close } = useNotification();  return (    <>      <Button        onClick={() => {          open?.({            key: \"my-notification\",            message: \"Test Notification\",            description: \"This is a test notification.\",            type: \"success\", // success | error | progress          });        }}      >        Show notification      </Button>      <Button        onClick={() => {          close?.(\"my-notification\");        }}      >        Close Notification      </Button>    </>  );};Was this helpful?Thumbs UpThumbs DownI18n Provider Check the guidePlease check the guide for more information on this topic.\\u200bI18n provider centralizes localization process in Refine applications.App.tsximport { Refine, I18nProvider } from \"@refinedev/core\";const i18nProvider: I18nProvider = {    translate: (key: string, options?: any, defaultMessage?: string) => string,    changeLocale: (lang: string, options?: any) => Promise,    getLocale: () => string,};export const App = () => {  return (    <Refine i18nProvider={i18nProvider} {/* ...*/}>      {/* ... */}    </Refine>  )}Was this helpful?Thumbs UpThumbs DownHooks\\u200bYou can use useTranslate, useSetLocale, useGetLocale hooks to handle i18n in your components.my-page.tsximport { useTranslate,')]}\n",
+      "---CHECK DOCUMENT RELEVANCE TO QUESTION---\n",
+      "---GRADE: DOCUMENT RELEVANT---\n",
+      "---GRADE: DOCUMENT RELEVANT---\n",
+      "---GRADE: DOCUMENT NOT RELEVANT---\n",
+      "---GRADE: DOCUMENT NOT RELEVANT---\n",
+      "---ASSESS GRADED DOCUMENTS---\n",
+      "---DECISION: NOT ALL DOCUMENTS ARE RELEVANT TO QUESTION, INCLUDE WEB SEARCH---\n",
+      "{'question': 'What are the types of hooks in refine.dev data fetching?', 'web_search': 'Yes', 'max_retries': 3, 'loop_step': 0, 'documents': [Document(metadata={'id': 'b4238ef3-d946-4584-be69-0ed90916f5ec', 'source': 'https://refine.dev/docs/guides-concepts/data-fetching/', 'title': 'Data Fetching | Refine', 'description': 'Data is essential for any UI Application and these applications are a bridge between users and the underlying data source(s), making it possible for users to interact with data in a meaningful way.', 'language': 'en'}, page_content='});Refine offers various data hooks for CRUD operations, you can see the list of these hooks below:HookMethodDescriptionuseOnegetOneget a single record.useUpdateupdateupdate an existing record.useCreatecreatecreate a new record.useDeletedeleteOnedelete a single record.useList or useInfiniteListgetListget a list of records.useApiUrlgetApiUrlget the API URL.useCustomcustommaking custom API requests.useManygetManyget multiple records.useCreateManycreateManycreate multiple records.useDeleteManydeleteManydelete multiple records.useUpdateManyupdateManyupdate multiple records.Was this helpful?Thumbs UpThumbs DownHow Refine treats data and state?\\u200bData hooks uses TanStack Query under the hood. It takes care of managing the state for you. It provides data, isLoading, and error states to help you handle loading, success, and error scenarios gracefully.Refine treats data and state in a structured and efficient manner, providing developers with powerful tools to manage data seamlessly within their applications. Here are some key aspects of how Refine treats data and state:Resource-Based Approach: Organizes data around resources, which are essentially models representing different data entities or API endpoints. These resources help structure your application\\'s data management.Invalidation: Automatically invalidates data after a successful mutation (e.g., creating, updating, or deleting a resource), ensuring that the UI is updated with the latest data.Caching: Caches data to improve performance and deduplicates API calls.Optimistic Updates: Supports optimistic updates, which means it will update the UI optimistically before the actual API call is complete. This enhances the user experience by reducing perceived latency.Hooks for CRUD Operations: Offers a collection of hooks that align with common data operations like listing, creating, updating, and deleting data (useList, useCreate, useUpdate, useDelete). In addition to these basic hooks, Refine provides advanced hooks that are a composition of these fundamental ones for handling more complex tasks (useForm, useTable, useSelect).Integration with UI Libraries: Works seamlessly with popular UI libraries. It provides a structured approach to represent data within these libraries.Realtime Updates: Allowing your application to reflect changes in data as they occur.Was this helpful?Thumbs UpThumbs DownMeta usage Check the guidePlease check the guide for more information on this topic.\\u200bmeta is a special property that can be used to pass additional information to your data provider methods through data hooks like useOne, useList, useForm from anywhere across your application.The capabilities of meta properties depend on your data provider\\'s implementation. While some may use additional features through meta, others may not use them or follow a different approach.Here are some examples of meta usage:Passing additional headers or parameters to the request.Generate GraphQL queries.Multi-tenancy support (passing the tenant id to the request).In the example below, we are passing meta.foo property to the useOne hook. Then, we are using this property to pass additional headers to the request.import { DataProvider, useOne } from \"@refinedev/core\";useOne({    resource: \"products\",    id: 1,    meta: {        foo: \"bar\",    },});export const dataProvider = (apiUrl: string): DataProvider => ({    getOne: async ({ resource, id, meta }) => {        const response = await fetch(`${apiUrl}/${resource}/${id}`, {            headers: {                \"x-foo\": meta.foo,            },        });        const data = await response.json();        return {            data,        };    },    ...});Was this helpful?Thumbs UpThumbs DownGraphQL\\u200bRefine\\'s meta property has gqlQuery and gqlMutation fields, which accepts GraphQL operation as graphql\\'s DocumentNode type.You can use these fields to pass GraphQL queries or mutations to your data provider methods through data hooks like useOne, useList, useForm from anywhere across your application.Easiest way to generate GraphQL queries is to use graphql-tag package.import gql from \"graphql-tag\";import { useOne, useUpdate } from \"@refinedev/core\";const'), Document(metadata={'id': '29492e40-0d1d-4d22-98cf-3e62110491a9', 'source': 'https://refine.dev/docs/guides-concepts/data-fetching/', 'title': 'Data Fetching | Refine', 'description': 'Data is essential for any UI Application and these applications are a bridge between users and the underlying data source(s), making it possible for users to interact with data in a meaningful way.', 'language': 'en'}, page_content='Data Fetching | Refine')]}\n",
+      "---WEB SEARCH---\n"
+     ]
+    },
+    {
+     "ename": "TypeError",
+     "evalue": "string indices must be integers, not 'str'",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[1;31mTypeError\u001b[0m                                 Traceback (most recent call last)",
+      "Cell \u001b[1;32mIn[52], line 2\u001b[0m\n\u001b[0;32m      1\u001b[0m inputs \u001b[38;5;241m=\u001b[39m {\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mquestion\u001b[39m\u001b[38;5;124m\"\u001b[39m: \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mWhat are the types of hooks in refine.dev data fetching?\u001b[39m\u001b[38;5;124m\"\u001b[39m, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mmax_retries\u001b[39m\u001b[38;5;124m\"\u001b[39m: \u001b[38;5;241m3\u001b[39m}\n\u001b[1;32m----> 2\u001b[0m \u001b[38;5;28;43;01mfor\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43mevent\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;129;43;01min\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43mgraph\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mstream\u001b[49m\u001b[43m(\u001b[49m\u001b[43minputs\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mstream_mode\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mvalues\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\u001b[43m:\u001b[49m\n\u001b[0;32m      3\u001b[0m \u001b[43m    \u001b[49m\u001b[38;5;28;43mprint\u001b[39;49m\u001b[43m(\u001b[49m\u001b[43mevent\u001b[49m\u001b[43m)\u001b[49m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langgraph\\pregel\\__init__.py:1328\u001b[0m, in \u001b[0;36mPregel.stream\u001b[1;34m(self, input, config, stream_mode, output_keys, interrupt_before, interrupt_after, debug, subgraphs)\u001b[0m\n\u001b[0;32m   1317\u001b[0m     \u001b[38;5;66;03m# Similarly to Bulk Synchronous Parallel / Pregel model\u001b[39;00m\n\u001b[0;32m   1318\u001b[0m     \u001b[38;5;66;03m# computation proceeds in steps, while there are channel updates\u001b[39;00m\n\u001b[0;32m   1319\u001b[0m     \u001b[38;5;66;03m# channel updates from step N are only visible in step N+1\u001b[39;00m\n\u001b[0;32m   1320\u001b[0m     \u001b[38;5;66;03m# channels are guaranteed to be immutable for the duration of the step,\u001b[39;00m\n\u001b[0;32m   1321\u001b[0m     \u001b[38;5;66;03m# with channel updates applied only at the transition between steps\u001b[39;00m\n\u001b[0;32m   1322\u001b[0m     \u001b[38;5;28;01mwhile\u001b[39;00m loop\u001b[38;5;241m.\u001b[39mtick(\n\u001b[0;32m   1323\u001b[0m         input_keys\u001b[38;5;241m=\u001b[39m\u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39minput_channels,\n\u001b[0;32m   1324\u001b[0m         interrupt_before\u001b[38;5;241m=\u001b[39minterrupt_before_,\n\u001b[0;32m   1325\u001b[0m         interrupt_after\u001b[38;5;241m=\u001b[39minterrupt_after_,\n\u001b[0;32m   1326\u001b[0m         manager\u001b[38;5;241m=\u001b[39mrun_manager,\n\u001b[0;32m   1327\u001b[0m     ):\n\u001b[1;32m-> 1328\u001b[0m \u001b[43m        \u001b[49m\u001b[38;5;28;43;01mfor\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43m_\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;129;43;01min\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43mrunner\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mtick\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m   1329\u001b[0m \u001b[43m            \u001b[49m\u001b[43mloop\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mtasks\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mvalues\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m   1330\u001b[0m \u001b[43m            \u001b[49m\u001b[43mtimeout\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mstep_timeout\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m   1331\u001b[0m \u001b[43m            \u001b[49m\u001b[43mretry_policy\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mretry_policy\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m   1332\u001b[0m \u001b[43m            \u001b[49m\u001b[43mget_waiter\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mget_waiter\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m   1333\u001b[0m \u001b[43m        \u001b[49m\u001b[43m)\u001b[49m\u001b[43m:\u001b[49m\n\u001b[0;32m   1334\u001b[0m \u001b[43m            \u001b[49m\u001b[38;5;66;43;03m# emit output\u001b[39;49;00m\n\u001b[0;32m   1335\u001b[0m \u001b[43m            \u001b[49m\u001b[38;5;28;43;01myield from\u001b[39;49;00m\u001b[43m \u001b[49m\u001b[43moutput\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m   1336\u001b[0m \u001b[38;5;66;03m# emit output\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langgraph\\pregel\\runner.py:58\u001b[0m, in \u001b[0;36mPregelRunner.tick\u001b[1;34m(self, tasks, reraise, timeout, retry_policy, get_waiter)\u001b[0m\n\u001b[0;32m     56\u001b[0m t \u001b[38;5;241m=\u001b[39m tasks[\u001b[38;5;241m0\u001b[39m]\n\u001b[0;32m     57\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m---> 58\u001b[0m     \u001b[43mrun_with_retry\u001b[49m\u001b[43m(\u001b[49m\u001b[43mt\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mretry_policy\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m     59\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mcommit(t, \u001b[38;5;28;01mNone\u001b[39;00m)\n\u001b[0;32m     60\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mException\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langgraph\\pregel\\retry.py:29\u001b[0m, in \u001b[0;36mrun_with_retry\u001b[1;34m(task, retry_policy)\u001b[0m\n\u001b[0;32m     27\u001b[0m task\u001b[38;5;241m.\u001b[39mwrites\u001b[38;5;241m.\u001b[39mclear()\n\u001b[0;32m     28\u001b[0m \u001b[38;5;66;03m# run the task\u001b[39;00m\n\u001b[1;32m---> 29\u001b[0m \u001b[43mtask\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mproc\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43minvoke\u001b[49m\u001b[43m(\u001b[49m\u001b[43mtask\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43minput\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mconfig\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m     30\u001b[0m \u001b[38;5;66;03m# if successful, end\u001b[39;00m\n\u001b[0;32m     31\u001b[0m \u001b[38;5;28;01mbreak\u001b[39;00m\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langgraph\\utils\\runnable.py:410\u001b[0m, in \u001b[0;36mRunnableSeq.invoke\u001b[1;34m(self, input, config, **kwargs)\u001b[0m\n\u001b[0;32m    408\u001b[0m context\u001b[38;5;241m.\u001b[39mrun(_set_config_context, config)\n\u001b[0;32m    409\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m i \u001b[38;5;241m==\u001b[39m \u001b[38;5;241m0\u001b[39m:\n\u001b[1;32m--> 410\u001b[0m     \u001b[38;5;28minput\u001b[39m \u001b[38;5;241m=\u001b[39m \u001b[43mcontext\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrun\u001b[49m\u001b[43m(\u001b[49m\u001b[43mstep\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43minvoke\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43minput\u001b[39;49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mconfig\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    411\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[0;32m    412\u001b[0m     \u001b[38;5;28minput\u001b[39m \u001b[38;5;241m=\u001b[39m context\u001b[38;5;241m.\u001b[39mrun(step\u001b[38;5;241m.\u001b[39minvoke, \u001b[38;5;28minput\u001b[39m, config)\n",
+      "File \u001b[1;32md:\\Projects\\AI\\RAG_Agent\\.venv\\Lib\\site-packages\\langgraph\\utils\\runnable.py:184\u001b[0m, in \u001b[0;36mRunnableCallable.invoke\u001b[1;34m(self, input, config, **kwargs)\u001b[0m\n\u001b[0;32m    182\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[0;32m    183\u001b[0m     context\u001b[38;5;241m.\u001b[39mrun(_set_config_context, config)\n\u001b[1;32m--> 184\u001b[0m     ret \u001b[38;5;241m=\u001b[39m \u001b[43mcontext\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrun\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mfunc\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43minput\u001b[39;49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkwargs\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    185\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(ret, Runnable) \u001b[38;5;129;01mand\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mrecurse:\n\u001b[0;32m    186\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m ret\u001b[38;5;241m.\u001b[39minvoke(\u001b[38;5;28minput\u001b[39m, config)\n",
+      "Cell \u001b[1;32mIn[50], line 108\u001b[0m, in \u001b[0;36mweb_search\u001b[1;34m(state)\u001b[0m\n\u001b[0;32m    106\u001b[0m docs \u001b[38;5;241m=\u001b[39m web_search_tool\u001b[38;5;241m.\u001b[39minvoke({\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mquery\u001b[39m\u001b[38;5;124m\"\u001b[39m: question})\n\u001b[0;32m    107\u001b[0m \u001b[38;5;66;03m# doc_json = json.loads(docs)\u001b[39;00m\n\u001b[1;32m--> 108\u001b[0m web_results \u001b[38;5;241m=\u001b[39m \u001b[38;5;124m\"\u001b[39m\u001b[38;5;130;01m\\n\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;241m.\u001b[39mjoin([\u001b[43md\u001b[49m\u001b[43m[\u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43msnippet\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m]\u001b[49m \u001b[38;5;28;01mfor\u001b[39;00m d \u001b[38;5;129;01min\u001b[39;00m docs])\n\u001b[0;32m    109\u001b[0m web_results \u001b[38;5;241m=\u001b[39m Document(page_content\u001b[38;5;241m=\u001b[39mweb_results)\n\u001b[0;32m    110\u001b[0m documents\u001b[38;5;241m.\u001b[39mappend(web_results)\n",
+      "\u001b[1;31mTypeError\u001b[0m: string indices must be integers, not 'str'"
+     ]
+    }
+   ],
+   "source": [
+    "inputs = {\"question\": \"What are the types of hooks in refine.dev data fetching?\", \"max_retries\": 3}\n",
+    "for event in graph.stream(inputs, stream_mode=\"values\"):\n",
+    "    print(event)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": ".venv",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+
+
+================================================
+File: \project\schema.yml
+================================================
+schemas:
+  TranscribeAudioAgent:
+    input:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          description: "Audio input device ID"
+        file_path:
+          type: string
+          description: "Path to audio file for transcription (optional)"
+        sample_rate:
+          type: integer
+          default: 16000
+          description: "Audio sample rate in Hz"
+      required: ["device_id"]
+    output:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              name:
+                type: string
+              channels:
+                type: integer
+              sample_rate:
+                type: integer
+        transcription:
+          type: string
+          description: "Transcribed text"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  LiveCaptionAgent:
+    input:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          description: "Audio input device ID"
+        language:
+          type: string
+          default: "en"
+          description: "Caption language"
+      required: ["device_id"]
+    output:
+      type: object
+      properties:
+        caption:
+          type: string
+          description: "Real-time caption text"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  # Tool schemas
+  AudioDeviceTool:
+    input:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: ["list", "select", "info"]
+          description: "Operation to perform with audio devices"
+        device_id:
+          type: integer
+          description: "Device ID for select/info operations"
+      required: ["operation"]
+    output:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              name:
+                type: string
+              channels:
+                type: integer
+              sample_rate:
+                type: integer
+        selected_device:
+          type: object
+          properties:
+            index:
+              type: integer
+            name:
+              type: string
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+  AudioProcessingTool:
+    input:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: ["normalize", "noise_reduction", "trim_silence"]
+        audio_data:
+          type: string
+          description: "Base64 encoded audio data"
+        parameters:
+          type: object
+          properties:
+            target_db:
+              type: number
+            noise_threshold:
+              type: number
+      required: ["operation", "audio_data"]
+    output:
+      type: object
+      properties:
+        processed_audio:
+          type: string
+          description: "Base64 encoded processed audio data"
+        status:
+          type: string
+          enum: ["success", "error"]
+        message:
+          type: string
+      required: ["status", "message"]
+
+================================================
+File: \project\templates\base_tool.html
+================================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - RAG Agent</title>
+    <style>
+        .container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .tool-header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .input-section, .output-section, .log-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .console-log {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 3px;
+            height: 200px;
+            overflow-y: auto;
+        }
+        .result-area {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            min-height: 100px;
+        }
+        .error { color: #ff0000; }
+        .success { color: #00ff00; }
+        .info { color: #0088ff; }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <div class="tool-header">
+            <h1>{{ title }}</h1>
+            <p>{{ description }}</p>
+            <a href="/">← Back to Dashboard</a>
+        </div>
+
+        <div class="input-section">
+            <h2>Input</h2>
+            {% block input_content %}{% endblock %}
+        </div>
+
+        <div class="output-section">
+            <h2>Output</h2>
+            <div id="result" class="result-area">
+                Waiting for input...
+            </div>
+        </div>
+
+        <div class="log-section">
+            <h2>Console Log</h2>
+            <div id="console" class="console-log"></div>
+        </div>
+    </div>
+
+    <script>
+        function logToConsole(message, type = 'info') {
+            const console = document.getElementById('console');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            console.appendChild(entry);
+            console.scrollTop = console.scrollHeight;
+        }
+
+        {% block extra_scripts %}{% endblock %}
+    </script>
+</body>
+</html>
+
+
+================================================
+File: \project\templates\diarization_tool.html
+================================================
+{% extends "base_tool.html" %} {% block extra_styles %}
+<style>
+    .upload-container {
+        border: 2px dashed #ccc;
+        padding: 20px;
+        text-align: center;
+        border-radius: 5px;
+        background: #f9f9f9;
+        margin-bottom: 20px;
+    }
+    .upload-container.dragging {
+        background: #e1f5fe;
+        border-color: #03a9f4;
+    }
+    .progress-container {
+        margin: 10px 0;
+        display: none;
+    }
+    .progress-bar {
+        height: 4px;
+        background: #03a9f4;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+    .diarization-result {
+        font-family: sans-serif;
+        line-height: 1.5;
+    }
+    .segment {
+        margin: 10px 0;
+        padding: 5px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .segment small {
+        color: #666;
+        margin-left: 10px;
+    }
+</style>
+{% endblock %} {% block input_content %}
+<div class="upload-container" id="dropZone">
+    <form id="diarizeForm">
+        <div style="margin-bottom: 15px">
+            <label for="language">Select Language:</label>
+            <select id="language" name="language">
+                <option value="auto">Auto Detect</option>
+                <option value="en">English (en)</option>
+                <option value="de">German (de)</option>
+                <option value="ne">Nepali (ne)</option>
+                <option value="hi">Hindi (hi)</option>
+                <option value="ur">Urdu (ur)</option>
+                <option value="ja">Japanese (ja)</option>
+            </select>
+        </div>
+        <div>
+            <label for="audioFile">Select or drag audio file here</label>
+            <input
+                type="file"
+                id="audioFile"
+                name="audio"
+                accept="audio/*"
+                required
+            />
+        </div>
+        <div style="margin-top: 10px">
+            <button type="submit" id="submitBtn">Process Audio</button>
+        </div>
+    </form>
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar"></div>
+        <div id="progressText">Uploading: 0%</div>
+    </div>
+</div>
+{% endblock %} 
+{% block extra_scripts %} </script>
+
+<script>
+    const dropZone = document.getElementById("dropZone");
+    const form = document.getElementById("diarizeForm");
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressText = document.getElementById("progressText");
+    const resultArea = document.getElementById("result");
+
+    // Drag and drop handling
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, () =>
+            dropZone.classList.add("dragging")
+        );
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, () =>
+            dropZone.classList.remove("dragging")
+        );
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const file = dt.files[0];
+        document.getElementById("audioFile").files = dt.files;
+    });
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const audioFile = document.getElementById("audioFile").files[0];
+        const language = document.getElementById("language").value;
+        const submitBtn = document.getElementById("submitBtn");
+
+        if (!audioFile) {
+            logToConsole("Please select an audio file", "error");
+            return;
+        }
+
+        // Add file size check
+        if (audioFile.size === 0) {
+            logToConsole("File is empty", "error");
+            return;
+        }
+
+        // Disable form while processing
+        submitBtn.disabled = true;
+        logToConsole("Starting audio upload...", "info");
+        resultArea.textContent = "Uploading...";
+        progressContainer.style.display = "block";
+        progressBar.style.width = "0%";
+
+        try {
+            const formData = new FormData();
+            formData.append("audio", audioFile);
+            formData.append("language", language);  // Add language to form data
+
+            const xhr = new XMLHttpRequest();
+
+            // Setup upload progress monitoring
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percent + "%";
+                    progressText.textContent = `Uploading: ${Math.round(
+                        percent
+                    )}%`;
+                }
+            };
+
+            // Handle response
+            xhr.onload = async () => {
+                progressContainer.style.display = "none";
+                submitBtn.disabled = false;
+
+                try {
+                    if (xhr.status !== 200) {
+                        throw new Error(`Server returned status ${xhr.status}`);
+                    }
+                    
+                    const data = JSON.parse(xhr.responseText);
+                    logToConsole("Received response from server", "info");
+
+                    if (data.status === "error") {
+                        logToConsole(`Error: ${data.message}`, "error");
+                        resultArea.textContent = `Error: ${data.message}`;
+                    } else {
+                        logToConsole("Successfully processed audio", "success");
+                        resultArea.innerHTML = formatDiarizationResult(data);
+                    }
+                } catch (err) {
+                    logToConsole(`Error: ${err.message}`, "error");
+                    resultArea.textContent = `Error: ${err.message}`;
+                }
+            };
+
+            // Handle network errors
+            xhr.onerror = () => {
+                progressContainer.style.display = "none";
+                submitBtn.disabled = false;
+                logToConsole("Network error occurred", "error");
+                resultArea.textContent = "Error: Network error occurred";
+            };
+
+            // Send the request
+            xhr.open("POST", "/diarize");
+            xhr.send(formData);
+        } catch (err) {
+            progressContainer.style.display = "none";
+            submitBtn.disabled = false;
+            logToConsole(`Error: ${err.message}`, "error");
+            resultArea.textContent = `Error: ${err.message}`;
+        }
+    });
+
+    function formatDiarizationResult(data) {
+        if (!data.segments) return JSON.stringify(data, null, 2);
+
+        let html = '<div class="diarization-result">';
+        data.segments.forEach((segment) => {
+            html += `
+            <div class="segment">
+                <strong>Speaker ${segment.speaker}:</strong>
+                <span>${segment.text}</span>
+                <small>(${formatTime(segment.start)} - ${formatTime(
+                segment.end
+            )})</small>
+            </div>
+        `;
+        });
+        html += "</div>";
+        return html;
+    }
+
+    function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes}:${secs.toString().padStart(2, "0")}`;
+    }
+</script>
+{% endblock %}
+
+
+================================================
+File: \project\templates\index.html
+================================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Agent Dashboard</title>
+    <style>
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .section { margin: 40px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RAG Agent Dashboard</h1>
+        
+        <div class="section">
+            <h2>Available Agents</h2>
+            <div class="card-grid">
+                {% for agent_name, agent in agents.items() %}
+                <div class="card">
+                    <h3>{{ agent.name }}</h3>
+                    <p>{{ agent.description }}</p>
+                    <a href="{{ url_for('view_agent', agent_name=agent_name) }}">Open Agent</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Available Scripts</h2>
+            <div class="card-grid">
+                {% for category, scripts in script_tree.items() %}
+                {% for script in scripts %}
+                <div class="card">
+                    <h3>{{ script.split('/')[-2].replace('_', ' ').title() }}</h3>
+                    <p>Category: {{ category }}</p>
+                    <a href="{{ url_for('view_script', script=script) }}">Open Script</a>
+                </div>
+                {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+================================================
+File: \project\tools\ai_runners\live_caption\main.py
+================================================
+from base_agent import BaseAgent
+from agent_registry import AgentRegistry
+from typing import Dict, Any
+
+class LiveCaptionAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            name="Live Caption",
+            description="Generates real-time captions from audio input"
+        )
+    
+    def _get_default_input(self):
+        return {
+            "device_id": 0,
+            "language": "en"
+        }
+
+    def _create_output(self, caption="Sample caption"):
+        return {
+            "caption": caption,
+            "status": "success",
+            "message": "Captions generated successfully"
+        }
+
+    def _handle_error(self, e):
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+    def run(self, input_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        input_data = input_data or self._get_default_input()
+        if not self.validate_inputs(input_data):
+            return self._handle_error("Invalid input parameters")
+
+        self.pre_run()
+        try:
+            output = self._create_output()
+            if not self.validate_output(output):
+                return self._handle_error("Invalid output format")
+            return output
+        except Exception as e:
+            return self._handle_error(e)
+        finally:
+            self.post_run()
+
+# Register the agent
+AgentRegistry.register(LiveCaptionAgent)
+
+if __name__ == '__main__':
+    agent = LiveCaptionAgent()
+    agent.run()
+
+================================================
+File: \project\tools\ai_runners\speaker_diarization\main.py
+================================================
+import os
+import whisperx
+import gc
+import torch
+from typing import Dict, Any
+from base_agent import BaseAgent
+from agent_registry import AgentRegistry
+from logger import debug_logger, error_logger
+
+
+
+
+class SpeakerDiarizationAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            name="Speaker Diarization",
+            description="Transcribes audio with speaker identification"
+        )
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.compute_type = "float16" if torch.cuda.is_available() else "int8"
+        self.hf_token = os.getenv('HUGGINGFACE_TOKEN')
+        debug_logger.debug(f"Initialized Speaker Diarization agent with device: {self.device}")
+
+    def _serialize_segments(self, segments, diarize_segments):
+        """Convert segments and diarization data to JSON-serializable format"""
+        debug_logger.debug(f"Serializing {len(segments)} segments")
+        try:
+            serialized_segments = []
+            for i, segment in enumerate(segments):
+                debug_logger.debug(f"Serializing segment {i+1}/{len(segments)}")
+                serialized_segment = {
+                    "start": float(segment.get("start", 0)),
+                    "end": float(segment.get("end", 0)),
+                    "text": str(segment.get("text", "")),
+                    "speaker": str(segment.get("speaker", "UNKNOWN"))
+                }
+                serialized_segments.append(serialized_segment)
+
+            debug_logger.debug("Serialization complete")
+            return serialized_segments
+        except Exception as e:
+            error_logger.error(f"Serialization error: {str(e)}", exc_info=True)
+            raise
+
+    def run(self, input_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        debug_logger.debug(f"Run called with input: {input_data}")
+        
+        if not input_data or 'audio_path' not in input_data:
+            debug_logger.error("Missing audio_path in input")
+            return self._handle_error("Audio path required")
+
+        audio_path = os.path.abspath(input_data['audio_path'])
+        language = input_data.get('language', 'auto')
+        debug_logger.debug(f"Processing with language: {language}")
+
+        if not os.path.exists(audio_path):
+            return self._handle_error(f"Audio file not found at {audio_path}")
+
+        try:
+            debug_logger.debug(f"Processing audio file: {audio_path} with language: {language}")
+            
+            debug_logger.debug(f"Model device: {self.device}, compute_type: {self.compute_type}")
+            debug_logger.debug("Loading WhisperX model")
+            model = whisperx.load_model("large-v3", self.device, compute_type=self.compute_type)
+            debug_logger.debug("WhisperX model loaded successfully")
+            
+            debug_logger.debug(f"Loading audio from path: {audio_path}")
+            audio = whisperx.load_audio(audio_path)
+            debug_logger.debug("Audio loaded successfully")
+            
+            debug_logger.debug("Starting transcription")
+            # Use selected language if not auto
+            transcribe_options = {"batch_size": 16}
+            if language != "auto":
+                transcribe_options["language"] = language
+            
+            debug_logger.debug("Starting transcription with options:")
+            debug_logger.debug(f"Transcription options: {transcribe_options}")
+            result = model.transcribe(audio, **transcribe_options)
+            debug_logger.debug(f"Detected language: {result.get('language')}")
+            
+            # Clear GPU memory
+            gc.collect()
+            torch.cuda.empty_cache()
+            del model
+
+            debug_logger.debug("Starting alignment")
+            # Align whisper output
+            model_a, metadata = whisperx.load_align_model(
+                language_code=result["language"], 
+                device=self.device
+            )
+            result = whisperx.align(
+                result["segments"],
+                model_a, 
+                metadata,
+                audio,
+                self.device,
+                return_char_alignments=False
+            )
+
+            # Clear GPU memory again
+            gc.collect()
+            torch.cuda.empty_cache()
+            del model_a
+
+            debug_logger.debug("Starting diarization with HF token")
+            if not self.hf_token:
+                debug_logger.warning("No Hugging Face token found")
+            # Diarize audio
+            diarize_model = whisperx.DiarizationPipeline(
+                use_auth_token=self.hf_token,
+                device=self.device
+            )
+
+            # Get speaker labels
+            diarize_segments = diarize_model(audio)
+            result = whisperx.assign_word_speakers(diarize_segments, result)
+
+            # Before returning, serialize the data
+            serialized_result = self._serialize_segments(result["segments"], diarize_segments)
+            
+            debug_logger.debug(f"Final result contains {len(serialized_result)} segments")
+            debug_logger.debug("Processing complete")
+            return {
+                "status": "success",
+                "segments": serialized_result
+            }
+
+        except Exception as e:
+            error_logger.error(f"Diarization error: {str(e)}", exc_info=True)
+            return self._handle_error(str(e))
+
+    def _handle_error(self, message: str) -> Dict[str, Any]:
+        return {
+            "status": "error",
+            "message": message
+        }
+
+# Register the agent
+AgentRegistry.register(SpeakerDiarizationAgent)
+
+if __name__ == '__main__':
+    agent = SpeakerDiarizationAgent()
+    agent.run()
+
+================================================
+File: \project\tools\ai_runners\transcribe_audio\main.py
+================================================
+import pyaudio
+from typing import Dict, Any
+from base_agent import BaseAgent
+from agent_registry import AgentRegistry
+
+class TranscribeAudioAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            name="Audio Transcription",
+            description="Transcribes audio files to text"
+        )
+        self.p = pyaudio.PyAudio()
+    
+    def list_input_devices(self):
+        devices = []
+        for i in range(self.p.get_device_count()):
+            device_info = self.p.get_device_info_by_index(i)
+            if not device_info['maxInputChannels'] > 0:
+                continue
+            devices.append(self._format_device_info(device_info, i))
+        return devices
+
+    def _format_device_info(self, device_info, index):
+        return {
+            'index': index,
+            'name': device_info['name'],
+            'channels': device_info['maxInputChannels'],
+            'sample_rate': int(device_info['defaultSampleRate'])
+        }
+
+    def _get_default_input(self):
+        return {"device_id": 0}
+
+    def _create_output(self, devices, transcription="Sample transcription"):
+        return {
+            "devices": devices,
+            "transcription": transcription,
+            "status": "success",
+            "message": "Audio transcribed successfully"
+        }
+
+    def _handle_error(self, e):
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+    def run(self, input_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        input_data = input_data or self._get_default_input()
+        if not self.validate_inputs(input_data):
+            return self._handle_error("Invalid input parameters")
+
+        self.pre_run()
+        try:
+            devices = self.list_input_devices()
+            output = self._create_output(devices)
+            if not self.validate_output(output):
+                return self._handle_error("Invalid output format")
+            return output
+        except Exception as e:
+            return self._handle_error(e)
+        finally:
+            self.post_run()
+            self.p.terminate()
+
+# Register the agent
+AgentRegistry.register(TranscribeAudioAgent)
+
+if __name__ == '__main__':
+    agent = TranscribeAudioAgent()
+    agent.run()
+
+================================================
+File: \project\tools\file_management\create_file\main.py
+================================================
+import os
+from logger import debug_logger, info_logger, warning_logger, error_logger
+
+def create_file(filename):
+    debug_logger.debug(f"Attempting to create file: {filename}")
+    
+    if os.path.exists(filename):
+        warning_logger.warning(f"File already exists: {filename}")
+        return False
+        
+    try:
+        with open(filename, 'w') as f:
+            f.write('This is a test file.')
+        info_logger.info(f"Successfully created file: {filename}")
+        return True
+    except Exception as e:
+        error_logger.error(f"Failed to create file {filename}: {str(e)}")
+        return False
+
+if __name__ == '__main__':
+    create_file('test_file.txt')
+
+================================================
+File: \project\tools\file_management\delete_file\main.py
+================================================
+
+import os
+
+def delete_file(filename):
+    if os.path.exists(filename):
+        os.remove(filename)
+
+if __name__ == '__main__':
+    delete_file('test_file.txt')
+
+================================================
+File: \project\tools\file_management\rename_file\main.py
+================================================
+
+import os
+
+def rename_file(old_name, new_name):
+    if os.path.exists(old_name):
+        os.rename(old_name, new_name)
+
+if __name__ == '__main__':
+    rename_file('test_file.txt', 'renamed_file.txt')
+
+================================================
+File: \project\tools_registry.py
+================================================
+
+from typing import Dict, Type
+from base_tool import BaseTool
+
+class ToolRegistry:
+    _tools: Dict[str, Type[BaseTool]] = {}
+
+    @classmethod
+    def register(cls, tool_class: Type[BaseTool]) -> None:
+        """Register a new tool class"""
+        cls._tools[tool_class.__name__] = tool_class
+        
+    @classmethod
+    def get_tool(cls, tool_name: str) -> Type[BaseTool]:
+        """Get tool class by name"""
+        return cls._tools.get(tool_name)
+    
+    @classmethod
+    def get_all_tools(cls) -> Dict[str, Type[BaseTool]]:
+        """Get all registered tools"""
+        return cls._tools
+
+================================================
+File: \scripts\generate_commit.ps1
+================================================
+# Get repository root directory
+$RepoRoot = git rev-parse --show-toplevel
+$PythonScript = Join-Path $RepoRoot "scripts\generate_commit_message.py"
+
+# Load environment variables from .env
+$EnvFile = Join-Path $RepoRoot ".env"
+if (Test-Path $EnvFile) {
+    Get-Content $EnvFile | ForEach-Object {
+        if ($_ -match '^([^=]+)=(.*)$') {
+            $key = $matches[1]
+            $value = $matches[2]
+            Set-Item "env:$key" $value
+        }
+    }
+}
+
+# Set default values if not in .env
+$OllamaHost = if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { "http://localhost:11434" }
+$OllamaModel = if ($env:OLLAMA_MODEL) { $env:OLLAMA_MODEL } else { "llama3.2:3b-instruct-q8_0" }
+
+# Create temporary diff file
+$TempDiff = New-TemporaryFile
+
+# Get staged changes
+git diff --staged > $TempDiff
+
+if (-not (Get-Content $TempDiff)) {
+    Write-Host "No staged changes found."
+    Remove-Item $TempDiff
+    exit 1
+}
+
+try {
+    # Generate message
+    python $PythonScript `
+        --host $OllamaHost `
+        --model $OllamaModel `
+        --prompt-file $TempDiff `
+        > "$RepoRoot\.gitmessage"
+
+    Write-Host "Commit message generated and saved to .gitmessage"
+    Write-Host "Use 'git commit -F .gitmessage' to commit with this message"
+}
+catch {
+    Write-Error "Failed to generate commit message: $_"
+}
+finally {
+    Remove-Item $TempDiff -ErrorAction SilentlyContinue
+}
+
+================================================
+File: \scripts\generate_commit.sh
+================================================
+#!/bin/bash
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+PYTHON_SCRIPT="${REPO_ROOT}/scripts/generate_commit_message.py"
+
+# Load environment variables
+if [ -f "${REPO_ROOT}/.env" ]; then
+    export $(cat "${REPO_ROOT}/.env" | xargs)
+fi
+
+# Set default values if not provided in .env
+OLLAMA_HOST=${OLLAMA_HOST:-"http://localhost:11434"}
+OLLAMA_MODEL=${OLLAMA_MODEL:-"llama3.2:3b-instruct-q8_0"}
+
+# Create temporary diff file
+TEMP_DIFF=$(mktemp)
+git diff --staged > "$TEMP_DIFF"
+
+if [ ! -s "$TEMP_DIFF" ]; then
+    echo "No staged changes found."
+    rm -f "$TEMP_DIFF"
+    exit 1
+fi
+
+# Generate message
+python "$PYTHON_SCRIPT" \
+    --host "$OLLAMA_HOST" \
+    --model "$OLLAMA_MODEL" \
+    --prompt-file "$TEMP_DIFF" \
+    > "${REPO_ROOT}/.gitmessage"
+
+rm -f "$TEMP_DIFF"
+echo "Commit message generated and saved to .gitmessage"
+echo "Use 'git commit -F .gitmessage' to commit with this message"
+
+================================================
+File: \scripts\generate_commit_message.py
+================================================
+#!/usr/bin/env python3
+import sys
+import argparse
+from ollama import Client
+
+SYSTEM_PROMPT = """You are a highly skilled software developer responsible for generating clear and informative git commit messages.
+Generate a commit message with the following format, being sure to include the newlines:
+
+<title>
+
+<detailed explanation>
+
+The title should be 50 chars max, imperative mood, capitalized, no period.
+The explanation should be wrapped at 72 chars and explain what and why."""
+
+def format_commit_message(response):
+    """Format the LLM response into a proper commit message."""
+    # Remove any XML-like tags and extra whitespace
+    message = response.replace('<title>', '').replace('<detailed explanation>', '')
+    parts = message.strip().split('\n\n', 1)
+    
+    if len(parts) == 2:
+        title, body = parts
+        return f"{title.strip()}\n\n{body.strip()}"
+    return message.strip()
+
+def generate_commit_message(host, model, prompt_file):
+    try:
+        client = Client(host=host)
+        
+        with open(prompt_file, 'r') as f:
+            prompt = f.read()
+        
+        response = client.chat(
+            model=model,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': SYSTEM_PROMPT
+                },
+                {
+                    'role': 'user',
+                    'content': prompt
+                }
+            ]
+        )
+        return format_commit_message(response['message']['content'])
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate commit message using Ollama")
+    parser.add_argument("--host", required=True, help="Ollama API host")
+    parser.add_argument("--model", required=True, help="Ollama model name")
+    parser.add_argument("--prompt-file", required=True, help="File containing the prompt")
+    
+    args = parser.parse_args()
+    print(generate_commit_message(args.host, args.model, args.prompt_file))
+
+================================================
+File: \templates\commit_template.md
+================================================
+# Title: Summary, imperative, start upper case, don't end with a period
+# No more than 50 chars. #### 50 chars is here:  #
+
+# Remember blank line between title and body.
+
+# Body: Explain *what* and *why* (not *how*). Include task ID (Jira issue).
+# Wrap at 72 chars. ################################## which is here:  #
+
+
+# At the end: Include Co-authored-by for all contributors. 
+# Include at least one empty line before it. Format: 
+# Co-authored-by: name <user@users.noreply.github.com>
+#
+# How to Write a Git Commit Message:
+# https://chris.beams.io/posts/git-commit/
+#
+# 1. Separate subject from body with a blank line
+# 2. Limit the subject line to 50 characters
+# 3. Capitalize the subject line
+# 4. Do not end the subject line with a period
+# 5. Use the imperative mood in the subject line
+# 6. Wrap the body at 72 characters
+# 7. Use the body to explain what and why vs. how
+
+================================================
+File: \tests\index.html
+================================================
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Transform Button</title>
+    <style>
+        /* Basic styling for the button */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+    /* Styling the airplane button */
+    #airplaneButton {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: transform 0.3s ease, color 0.3s ease;
+    }
+
+    /* Active state styling */
+    #airplaneButton.active {
+        transform: scale(1.5);
+        color: #555;
+    }
+
+    /* Responsive styling */
+    @media screen and (max-width: 600px) {
+        #airplaneButton {
+            padding: 8px 16px;
+        }
+    }
+</style></head>
+<body>
+    <button id="airplaneButton">Transform into Airplane</button>
+
+<script>
+    document.getElementById('airplaneButton').addEventListener('click', function() {
+        this.classList.add('active');
+        const wings = document.createElement('div');
+        wings.style.position = 'absolute';
+        wings.style.left = '10px';
+        wings.style.top = '20px';
+        wings.style.transform = 'translate(-50%, -30%) rotate(45deg)';
+        wings.style.width = '100%';
+        wings.style.height = '80%';
+        wings.style.backgroundColor = '#f3f3f3';
+        wings.style.border = '1px solid #ccc';
+        wings.style.cursor = 'pointer';
+        wings.textContent = 'Transformed';
+        document.body.appendChild(wings);
+
+        // You can add more effects here, like revealing a landing strip
+        const landingStrip = document.createElement('div');
+        landingStrip.style.position = 'absolute';
+        landingStrip.style.left = '50px';
+        landingStrip.style.top = '20px';
+        landingStrip.style.transform = 'translateY(-10%) translateX(5%) rotate(-45deg)';
+        landingStrip.style.width = '100%';
+        landingStrip.style.height = '40%';
+        landingStrip.style.backgroundColor = '#ffffff';
+        landingStrip.style.border = '2px solid #000';
+        landingStrip.style.cursor = 'pointer';
+        landingStrip.textContent = 'Landing Strip';
+        document.body.appendChild(landingStrip);
+
+        this.classList.remove('active');
+    });
+</script></body>
+</html>
+

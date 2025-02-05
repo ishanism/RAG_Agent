@@ -1,4 +1,5 @@
 .venv
+.venv/
 .env
 .env.*
 !.env.example
@@ -8,7 +9,6 @@ error.log
 
 !templates/
 !templates/*
-.llms
 project/uploads
 project/*.log
 project/logs/critical.log

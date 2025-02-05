@@ -1,0 +1,3435 @@
+Directory structure:
+└── m-bain-whisperx/
+    ├── README.md
+    ├── EXAMPLES.md
+    ├── LICENSE
+    ├── MANIFEST.in
+    ├── requirements.txt
+    ├── setup.py
+    ├── figures/
+    ├── whisperx/
+    │   ├── SubtitlesProcessor.py
+    │   ├── __init__.py
+    │   ├── __main__.py
+    │   ├── alignment.py
+    │   ├── asr.py
+    │   ├── audio.py
+    │   ├── conjunctions.py
+    │   ├── diarize.py
+    │   ├── transcribe.py
+    │   ├── types.py
+    │   ├── utils.py
+    │   ├── assets/
+    │   │   ├── mel_filters.npz
+    │   │   └── pytorch_model.bin
+    │   └── vads/
+    │       ├── __init__.py
+    │       ├── pyannote.py
+    │       ├── silero.py
+    │       └── vad.py
+    └── .github/
+        ├── FUNDING.yml
+        └── workflows/
+            ├── build-and-release.yml
+            ├── python-compatibility.yml
+            └── tmp.yml
+
+================================================
+File: README.md
+================================================
+<h1 align="center">WhisperX</h1>
+
+<p align="center">
+  <a href="https://github.com/m-bain/whisperX/stargazers">
+    <img src="https://img.shields.io/github/stars/m-bain/whisperX.svg?colorA=orange&colorB=orange&logo=github"
+         alt="GitHub stars">
+  </a>
+  <a href="https://github.com/m-bain/whisperX/issues">
+        <img src="https://img.shields.io/github/issues/m-bain/whisperx.svg"
+             alt="GitHub issues">
+  </a>
+  <a href="https://github.com/m-bain/whisperX/blob/master/LICENSE">
+        <img src="https://img.shields.io/github/license/m-bain/whisperX.svg"
+             alt="GitHub license">
+  </a>
+  <a href="https://arxiv.org/abs/2303.00747">
+        <img src="http://img.shields.io/badge/Arxiv-2303.00747-B31B1B.svg"
+             alt="ArXiv paper">
+  </a>
+  <a href="https://twitter.com/intent/tweet?text=&url=https%3A%2F%2Fgithub.com%2Fm-bain%2FwhisperX">
+  <img src="https://img.shields.io/twitter/url/https/github.com/m-bain/whisperX.svg?style=social" alt="Twitter">
+  </a>      
+</p>
+
+
+<img width="1216" align="center" alt="whisperx-arch" src="https://raw.githubusercontent.com/m-bain/whisperX/refs/heads/main/figures/pipeline.png">
+
+
+<!-- <p align="left">Whisper-Based Automatic Speech Recognition (ASR) with improved timestamp accuracy + quality via forced phoneme alignment and voice-activity based batching for fast inference.</p> -->
+
+
+<!-- <h2 align="left", id="what-is-it">What is it 🔎</h2> -->
+
+
+This repository provides fast automatic speech recognition (70x realtime with large-v2) with word-level timestamps and speaker diarization.
+
+- ⚡️ Batched inference for 70x realtime transcription using whisper large-v2
+- 🪶 [faster-whisper](https://github.com/guillaumekln/faster-whisper) backend, requires <8GB gpu memory for large-v2 with beam_size=5
+- 🎯 Accurate word-level timestamps using wav2vec2 alignment
+- 👯‍♂️ Multispeaker ASR using speaker diarization from [pyannote-audio](https://github.com/pyannote/pyannote-audio) (speaker ID labels) 
+- 🗣️ VAD preprocessing, reduces hallucination & batching with no WER degradation
+
+
+
+**Whisper** is an ASR model [developed by OpenAI](https://github.com/openai/whisper), trained on a large dataset of diverse audio. Whilst it does produces highly accurate transcriptions, the corresponding timestamps are at the utterance-level, not per word, and can be inaccurate by several seconds. OpenAI's whisper does not natively support batching.
+
+**Phoneme-Based ASR** A suite of models finetuned to recognise the smallest unit of speech distinguishing one word from another, e.g. the element p in "tap". A popular example model is [wav2vec2.0](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self).
+
+**Forced Alignment** refers to the process by which orthographic transcriptions are aligned to audio recordings to automatically generate phone level segmentation.
+
+**Voice Activity Detection (VAD)** is the detection of the presence or absence of human speech.
+
+**Speaker Diarization** is the process of partitioning an audio stream containing human speech into homogeneous segments according to the identity of each speaker.
+
+<h2 align="left", id="highlights">New🚨</h2>
+
+- 1st place at [Ego4d transcription challenge](https://eval.ai/web/challenges/challenge-page/1637/leaderboard/3931/WER)  🏆
+- _WhisperX_ accepted at INTERSPEECH 2023 
+- v3 transcript segment-per-sentence: using nltk sent_tokenize for better subtitlting & better diarization
+- v3 released, 70x speed-up open-sourced. Using batched whisper with [faster-whisper](https://github.com/guillaumekln/faster-whisper) backend!
+- v2 released, code cleanup, imports whisper library VAD filtering is now turned on by default, as in the paper.
+- Paper drop🎓👨‍🏫! Please see our [ArxiV preprint](https://arxiv.org/abs/2303.00747) for benchmarking and details of WhisperX. We also introduce more efficient batch inference resulting in large-v2 with *60-70x REAL TIME speed.
+
+<h2 align="left" id="setup">Setup ⚙️</h2>
+Tested for PyTorch 2.0, Python 3.10 (use other versions at your own risk!)
+
+GPU execution requires the NVIDIA libraries cuBLAS 11.x and cuDNN 8.x to be installed on the system. Please refer to the [CTranslate2 documentation](https://opennmt.net/CTranslate2/installation.html).
+
+
+### 1. Create Python3.10 environment
+
+`conda create --name whisperx python=3.10`
+
+`conda activate whisperx`
+
+
+### 2. Install PyTorch, e.g. for Linux and Windows CUDA11.8:
+
+`conda install pytorch==2.0.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia`
+
+See other methods [here.](https://pytorch.org/get-started/previous-versions/#v200)
+
+### 3. Install WhisperX
+
+You have several installation options:
+
+#### Option A: Stable Release (recommended)
+Install the latest stable version from PyPI:
+
+```bash
+pip install whisperx
+```
+
+#### Option B: Development Version
+Install the latest development version directly from GitHub (may be unstable):
+
+```bash
+pip install git+https://github.com/m-bain/whisperx.git
+```
+
+If already installed, update to the most recent commit:
+
+```bash
+pip install git+https://github.com/m-bain/whisperx.git --upgrade
+```
+
+#### Option C: Development Mode
+If you wish to modify the package, clone and install in editable mode:
+```bash
+git clone https://github.com/m-bain/whisperX.git
+cd whisperX
+pip install -e .
+```
+
+> **Note**: The development version may contain experimental features and bugs. Use the stable PyPI release for production environments.
+
+You may also need to install ffmpeg, rust etc. Follow openAI instructions here https://github.com/openai/whisper#setup.
+
+### Speaker Diarization
+To **enable Speaker Diarization**, include your Hugging Face access token (read) that you can generate from [Here](https://huggingface.co/settings/tokens) after the `--hf_token` argument and accept the user agreement for the following models: [Segmentation](https://huggingface.co/pyannote/segmentation-3.0) and [Speaker-Diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) (if you choose to use Speaker-Diarization 2.x, follow requirements [here](https://huggingface.co/pyannote/speaker-diarization) instead.)
+
+> **Note**<br>
+> As of Oct 11, 2023, there is a known issue regarding slow performance with pyannote/Speaker-Diarization-3.0 in whisperX. It is due to dependency conflicts between faster-whisper and pyannote-audio 3.0.0. Please see [this issue](https://github.com/m-bain/whisperX/issues/499) for more details and potential workarounds.
+
+
+<h2 align="left" id="example">Usage 💬 (command line)</h2>
+
+### English
+
+Run whisper on example segment (using default params, whisper small) add `--highlight_words True` to visualise word timings in the .srt file.
+
+    whisperx examples/sample01.wav
+
+
+Result using *WhisperX* with forced alignment to wav2vec2.0 large:
+
+https://user-images.githubusercontent.com/36994049/208253969-7e35fe2a-7541-434a-ae91-8e919540555d.mp4
+
+Compare this to original whisper out the box, where many transcriptions are out of sync:
+
+https://user-images.githubusercontent.com/36994049/207743923-b4f0d537-29ae-4be2-b404-bb941db73652.mov
+
+
+For increased timestamp accuracy, at the cost of higher gpu mem, use bigger models (bigger alignment model not found to be that helpful, see paper) e.g.
+
+    whisperx examples/sample01.wav --model large-v2 --align_model WAV2VEC2_ASR_LARGE_LV60K_960H --batch_size 4
+
+
+To label the transcript with speaker ID's (set number of speakers if known e.g. `--min_speakers 2` `--max_speakers 2`):
+
+    whisperx examples/sample01.wav --model large-v2 --diarize --highlight_words True
+
+To run on CPU instead of GPU (and for running on Mac OS X):
+
+    whisperx examples/sample01.wav --compute_type int8
+
+### Other languages
+
+The phoneme ASR alignment model is *language-specific*, for tested languages these models are [automatically picked from torchaudio pipelines or huggingface](https://github.com/m-bain/whisperX/blob/f2da2f858e99e4211fe4f64b5f2938b007827e17/whisperx/alignment.py#L24-L58).
+Just pass in the `--language` code, and use the whisper `--model large`.
+
+Currently default models provided for `{en, fr, de, es, it}` via torchaudio pipelines and many other languages via Hugging Face. Please find the list of currently supported languages under `DEFAULT_ALIGN_MODELS_HF` on [alignment.py](https://github.com/m-bain/whisperX/blob/main/whisperx/alignment.py). If the detected language is not in this list, you need to find a phoneme-based ASR model from [huggingface model hub](https://huggingface.co/models) and test it on your data.
+
+
+#### E.g. German
+    whisperx --model large-v2 --language de examples/sample_de_01.wav
+
+https://user-images.githubusercontent.com/36994049/208298811-e36002ba-3698-4731-97d4-0aebd07e0eb3.mov
+
+
+See more examples in other languages [here](EXAMPLES.md).
+
+## Python usage  🐍
+
+```python
+import whisperx
+import gc 
+
+device = "cuda" 
+audio_file = "audio.mp3"
+batch_size = 16 # reduce if low on GPU mem
+compute_type = "float16" # change to "int8" if low on GPU mem (may reduce accuracy)
+
+# 1. Transcribe with original whisper (batched)
+model = whisperx.load_model("large-v2", device, compute_type=compute_type)
+
+# save model to local path (optional)
+# model_dir = "/path/"
+# model = whisperx.load_model("large-v2", device, compute_type=compute_type, download_root=model_dir)
+
+audio = whisperx.load_audio(audio_file)
+result = model.transcribe(audio, batch_size=batch_size)
+print(result["segments"]) # before alignment
+
+# delete model if low on GPU resources
+# import gc; gc.collect(); torch.cuda.empty_cache(); del model
+
+# 2. Align whisper output
+model_a, metadata = whisperx.load_align_model(language_code=result["language"], device=device)
+result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
+
+print(result["segments"]) # after alignment
+
+# delete model if low on GPU resources
+# import gc; gc.collect(); torch.cuda.empty_cache(); del model_a
+
+# 3. Assign speaker labels
+diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device=device)
+
+# add min/max number of speakers if known
+diarize_segments = diarize_model(audio)
+# diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
+
+result = whisperx.assign_word_speakers(diarize_segments, result)
+print(diarize_segments)
+print(result["segments"]) # segments are now assigned speaker IDs
+```
+
+## Demos 🚀
+
+[![Replicate (large-v3](https://img.shields.io/static/v1?label=Replicate+WhisperX+large-v3&message=Demo+%26+Cloud+API&color=blue)](https://replicate.com/victor-upmeet/whisperx) 
+[![Replicate (large-v2](https://img.shields.io/static/v1?label=Replicate+WhisperX+large-v2&message=Demo+%26+Cloud+API&color=blue)](https://replicate.com/daanelson/whisperx) 
+[![Replicate (medium)](https://img.shields.io/static/v1?label=Replicate+WhisperX+medium&message=Demo+%26+Cloud+API&color=blue)](https://replicate.com/carnifexer/whisperx) 
+
+If you don't have access to your own GPUs, use the links above to try out WhisperX. 
+
+<h2 align="left" id="whisper-mod">Technical Details 👷‍♂️</h2>
+
+For specific details on the batching and alignment, the effect of VAD, as well as the chosen alignment model, see the preprint [paper](https://www.robots.ox.ac.uk/~vgg/publications/2023/Bain23/bain23.pdf).
+
+To reduce GPU memory requirements, try any of the following (2. & 3. can affect quality):
+1.  reduce batch size, e.g. `--batch_size 4`
+2. use a smaller ASR model `--model base`
+3. Use lighter compute type `--compute_type int8`
+
+Transcription differences from openai's whisper:
+1. Transcription without timestamps. To enable single pass batching, whisper inference is performed `--without_timestamps True`, this ensures 1 forward pass per sample in the batch. However, this can cause discrepancies the default whisper output.
+2. VAD-based segment transcription, unlike the buffered transcription of openai's. In the WhisperX paper we show this reduces WER, and enables accurate batched inference
+3.  `--condition_on_prev_text` is set to `False` by default (reduces hallucination)
+
+<h2 align="left" id="limitations">Limitations ⚠️</h2>
+
+- Transcript words which do not contain characters in the alignment models dictionary e.g. "2014." or "£13.60" cannot be aligned and therefore are not given a timing.
+- Overlapping speech is not handled particularly well by whisper nor whisperx
+- Diarization is far from perfect
+- Language specific wav2vec2 model is needed
+
+
+<h2 align="left" id="contribute">Contribute 🧑‍🏫</h2>
+
+If you are multilingual, a major way you can contribute to this project is to find phoneme models on huggingface (or train your own) and test them on speech for the target language. If the results look good send a pull request and some examples showing its success.
+
+Bug finding and pull requests are also highly appreciated to keep this project going, since it's already diverging from the original research scope.
+
+<h2 align="left" id="coming-soon">TODO 🗓</h2>
+
+* [x] Multilingual init
+
+* [x] Automatic align model selection based on language detection
+
+* [x] Python usage
+
+* [x] Incorporating  speaker diarization
+
+* [x] Model flush, for low gpu mem resources
+
+* [x] Faster-whisper backend
+
+* [x] Add max-line etc. see (openai's whisper utils.py)
+
+* [x] Sentence-level segments (nltk toolbox)
+
+* [x] Improve alignment logic
+
+* [ ] update examples with diarization and word highlighting
+
+* [ ] Subtitle .ass output <- bring this back (removed in v3)
+
+* [ ] Add benchmarking code (TEDLIUM for spd/WER & word segmentation)
+
+* [x] Allow silero-vad as alternative VAD option
+
+* [ ] Improve diarization (word level). *Harder than first thought...*
+
+
+<h2 align="left" id="contact">Contact/Support 📇</h2>
+
+
+Contact maxhbain@gmail.com for queries.
+
+<a href="https://www.buymeacoffee.com/maxhbain" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+
+
+<h2 align="left" id="acks">Acknowledgements 🙏</h2>
+
+This work, and my PhD, is supported by the [VGG (Visual Geometry Group)](https://www.robots.ox.ac.uk/~vgg/) and the University of Oxford.
+
+Of course, this is builds on [openAI's whisper](https://github.com/openai/whisper).
+Borrows important alignment code from [PyTorch tutorial on forced alignment](https://pytorch.org/tutorials/intermediate/forced_alignment_with_torchaudio_tutorial.html)
+And uses the wonderful pyannote VAD / Diarization https://github.com/pyannote/pyannote-audio
+
+
+Valuable VAD & Diarization Models from:
+- [pyannote audio][https://github.com/pyannote/pyannote-audio]
+- [silero vad][https://github.com/snakers4/silero-vad]
+
+Great backend from [faster-whisper](https://github.com/guillaumekln/faster-whisper) and [CTranslate2](https://github.com/OpenNMT/CTranslate2)
+
+Those who have [supported this work financially](https://www.buymeacoffee.com/maxhbain) 🙏
+
+Finally, thanks to the OS [contributors](https://github.com/m-bain/whisperX/graphs/contributors) of this project, keeping it going and identifying bugs.
+
+<h2 align="left" id="cite">Citation</h2>
+If you use this in your research, please cite the paper:
+
+```bibtex
+@article{bain2022whisperx,
+  title={WhisperX: Time-Accurate Speech Transcription of Long-Form Audio},
+  author={Bain, Max and Huh, Jaesung and Han, Tengda and Zisserman, Andrew},
+  journal={INTERSPEECH 2023},
+  year={2023}
+}
+```
+
+
+================================================
+File: EXAMPLES.md
+================================================
+# More Examples
+
+## Other Languages
+
+For non-english ASR, it is best to use the `large` whisper model. Alignment models are automatically picked by the chosen language from the default [lists](https://github.com/m-bain/whisperX/blob/main/whisperx/alignment.py#L18).
+
+Currently support default models tested for {en, fr, de, es, it, ja, zh, nl}
+
+
+If the detected language is not in this list, you need to find a phoneme-based ASR model from [huggingface model hub](https://huggingface.co/models) and test it on your data.
+
+### French
+    whisperx --model large --language fr examples/sample_fr_01.wav
+
+
+https://user-images.githubusercontent.com/36994049/208298804-31c49d6f-6787-444e-a53f-e93c52706752.mov
+
+
+### German
+    whisperx --model large --language de examples/sample_de_01.wav
+
+
+https://user-images.githubusercontent.com/36994049/208298811-e36002ba-3698-4731-97d4-0aebd07e0eb3.mov
+
+
+### Italian
+    whisperx --model large --language de examples/sample_it_01.wav
+
+
+https://user-images.githubusercontent.com/36994049/208298819-6f462b2c-8cae-4c54-b8e1-90855794efc7.mov
+
+
+### Japanese
+    whisperx --model large --language ja examples/sample_ja_01.wav
+
+
+https://user-images.githubusercontent.com/19920981/208731743-311f2360-b73b-4c60-809d-aaf3cd7e06f4.mov
+
+
+================================================
+File: LICENSE
+================================================
+BSD 2-Clause License
+
+Copyright (c) 2024, Max Bain
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+================================================
+File: MANIFEST.in
+================================================
+include whisperx/assets/*
+include LICENSE
+include requirements.txt
+
+
+================================================
+File: requirements.txt
+================================================
+torch>=2
+torchaudio>=2
+faster-whisper==1.1.0
+ctranslate2<4.5.0
+transformers
+pandas
+setuptools>=65
+nltk
+
+
+================================================
+File: setup.py
+================================================
+import os
+
+import pkg_resources
+from setuptools import find_packages, setup
+
+with open("README.md", "r", encoding="utf-8") as f:
+    long_description = f.read()
+
+setup(
+    name="whisperx",
+    py_modules=["whisperx"],
+    version="3.3.1",
+    description="Time-Accurate Automatic Speech Recognition using Whisper.",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    python_requires=">=3.9, <3.13",
+    author="Max Bain",
+    url="https://github.com/m-bain/whisperx",
+    license="BSD-2-Clause",
+    packages=find_packages(exclude=["tests*"]),
+    install_requires=[
+        str(r)
+        for r in pkg_resources.parse_requirements(
+            open(os.path.join(os.path.dirname(__file__), "requirements.txt"))
+        )
+    ]
+    + [f"pyannote.audio==3.3.2"],
+    entry_points={
+        "console_scripts": ["whisperx=whisperx.transcribe:cli"],
+    },
+    include_package_data=True,
+    extras_require={"dev": ["pytest"]},
+)
+
+
+================================================
+File: whisperx/SubtitlesProcessor.py
+================================================
+import math
+from .conjunctions import get_conjunctions, get_comma
+from typing import TextIO
+
+def normal_round(n):
+    if n - math.floor(n) < 0.5:
+        return math.floor(n)
+    return math.ceil(n)
+
+
+def format_timestamp(seconds: float, is_vtt: bool = False):
+
+    assert seconds >= 0, "non-negative timestamp expected"
+    milliseconds = round(seconds * 1000.0)
+
+    hours = milliseconds // 3_600_000
+    milliseconds -= hours * 3_600_000
+
+    minutes = milliseconds // 60_000
+    milliseconds -= minutes * 60_000
+
+    seconds = milliseconds // 1_000
+    milliseconds -= seconds * 1_000
+
+    separator = '.' if is_vtt else ','
+    
+    hours_marker = f"{hours:02d}:"
+    return (
+        f"{hours_marker}{minutes:02d}:{seconds:02d}{separator}{milliseconds:03d}"
+    )
+
+
+
+class SubtitlesProcessor:
+    def __init__(self, segments, lang, max_line_length = 45, min_char_length_splitter = 30, is_vtt = False):
+        self.comma = get_comma(lang)
+        self.conjunctions = set(get_conjunctions(lang))
+        self.segments = segments
+        self.lang = lang
+        self.max_line_length = max_line_length
+        self.min_char_length_splitter = min_char_length_splitter
+        self.is_vtt = is_vtt
+        complex_script_languages = ['th', 'lo', 'my', 'km', 'am', 'ko', 'ja', 'zh', 'ti', 'ta', 'te', 'kn', 'ml', 'hi', 'ne', 'mr', 'ar', 'fa', 'ur', 'ka']
+        if self.lang in complex_script_languages:
+            self.max_line_length = 30
+            self.min_char_length_splitter = 20
+
+    def estimate_timestamp_for_word(self, words, i, next_segment_start_time=None):
+        k = 0.25
+        has_prev_end = i > 0 and 'end' in words[i - 1]
+        has_next_start = i < len(words) - 1 and 'start' in words[i + 1]
+
+        if has_prev_end:
+            words[i]['start'] = words[i - 1]['end']
+            if has_next_start:
+                words[i]['end'] = words[i + 1]['start']
+            else:
+                if next_segment_start_time:
+                    words[i]['end'] = next_segment_start_time if next_segment_start_time - words[i - 1]['end'] <= 1 else next_segment_start_time - 0.5
+                else:
+                    words[i]['end'] = words[i]['start'] + len(words[i]['word']) * k
+
+        elif has_next_start:
+            words[i]['start'] = words[i + 1]['start'] - len(words[i]['word']) * k
+            words[i]['end'] = words[i + 1]['start']
+
+        else:
+            if next_segment_start_time:
+                words[i]['start'] = next_segment_start_time - 1
+                words[i]['end'] = next_segment_start_time - 0.5
+            else:
+                words[i]['start'] = 0
+                words[i]['end'] = 0
+
+
+
+    def process_segments(self, advanced_splitting=True):
+        subtitles = []
+        for i, segment in enumerate(self.segments):
+            next_segment_start_time = self.segments[i + 1]['start'] if i + 1 < len(self.segments) else None
+            
+            if advanced_splitting:
+
+                split_points = self.determine_advanced_split_points(segment, next_segment_start_time)
+                subtitles.extend(self.generate_subtitles_from_split_points(segment, split_points, next_segment_start_time))
+            else:
+                words = segment['words']
+                for i, word in enumerate(words):
+                    if 'start' not in word or 'end' not in word:
+                        self.estimate_timestamp_for_word(words, i, next_segment_start_time)
+
+                subtitles.append({
+                'start': segment['start'],
+                'end': segment['end'],
+                'text': segment['text']
+            })
+
+        return subtitles
+
+    def determine_advanced_split_points(self, segment, next_segment_start_time=None):
+        split_points = []
+        last_split_point = 0
+        char_count = 0
+
+        words = segment.get('words', segment['text'].split())
+        add_space = 0 if self.lang in ['zh', 'ja'] else 1
+
+        total_char_count = sum(len(word['word']) if isinstance(word, dict) else len(word) + add_space for word in words)
+        char_count_after = total_char_count
+
+        for i, word in enumerate(words):
+            word_text = word['word'] if isinstance(word, dict) else word
+            word_length = len(word_text) + add_space
+            char_count += word_length
+            char_count_after -= word_length
+
+            char_count_before = char_count - word_length
+
+            if isinstance(word, dict) and ('start' not in word or 'end' not in word):
+                self.estimate_timestamp_for_word(words, i, next_segment_start_time)
+
+            if char_count >= self.max_line_length:
+                midpoint = normal_round((last_split_point + i) / 2)
+                if char_count_before >= self.min_char_length_splitter:
+                    split_points.append(midpoint)
+                    last_split_point = midpoint + 1
+                    char_count = sum(len(words[j]['word']) if isinstance(words[j], dict) else len(words[j]) + add_space for j in range(last_split_point, i + 1))
+
+            elif word_text.endswith(self.comma) and char_count_before >= self.min_char_length_splitter and char_count_after >= self.min_char_length_splitter:
+                split_points.append(i)
+                last_split_point = i + 1
+                char_count = 0
+
+            elif word_text.lower() in self.conjunctions and char_count_before >= self.min_char_length_splitter and char_count_after >= self.min_char_length_splitter:
+                split_points.append(i - 1)
+                last_split_point = i
+                char_count = word_length
+
+        return split_points
+
+    
+    def generate_subtitles_from_split_points(self, segment, split_points, next_start_time=None):
+        subtitles = []
+        
+        words = segment.get('words', segment['text'].split())
+        total_word_count = len(words)
+        total_time = segment['end'] - segment['start']
+        elapsed_time = segment['start']
+        prefix = ' ' if self.lang not in ['zh', 'ja'] else ''
+        start_idx = 0
+        for split_point in split_points:
+
+            fragment_words = words[start_idx:split_point + 1]
+            current_word_count = len(fragment_words)
+            
+
+            if isinstance(fragment_words[0], dict):
+                start_time = fragment_words[0]['start']
+                end_time = fragment_words[-1]['end']
+                next_start_time_for_word = words[split_point + 1]['start'] if split_point + 1 < len(words) else None
+                if next_start_time_for_word and (next_start_time_for_word - end_time) <= 0.8:
+                    end_time = next_start_time_for_word
+            else:
+                fragment = prefix.join(fragment_words).strip()
+                current_duration = (current_word_count / total_word_count) * total_time
+                start_time = elapsed_time
+                end_time = elapsed_time + current_duration
+                elapsed_time += current_duration
+
+
+            subtitles.append({
+                'start': start_time,
+                'end': end_time,
+                'text': fragment if not isinstance(fragment_words[0], dict) else prefix.join(word['word'] for word in fragment_words)
+            })
+            
+            start_idx = split_point + 1
+
+        # Handle the last fragment
+        if start_idx < len(words):
+            fragment_words = words[start_idx:]
+            current_word_count = len(fragment_words)
+            
+            if isinstance(fragment_words[0], dict):
+                start_time = fragment_words[0]['start']
+                end_time = fragment_words[-1]['end']
+            else:
+                fragment = prefix.join(fragment_words).strip()
+                current_duration = (current_word_count / total_word_count) * total_time
+                start_time = elapsed_time
+                end_time = elapsed_time + current_duration
+
+            if next_start_time and (next_start_time - end_time) <= 0.8:
+                end_time = next_start_time
+
+            subtitles.append({
+                'start': start_time,
+                'end': end_time if end_time is not None else segment['end'],
+                'text': fragment if not isinstance(fragment_words[0], dict) else prefix.join(word['word'] for word in fragment_words)
+            })
+            
+        return subtitles
+    
+
+
+    def save(self, filename="subtitles.srt", advanced_splitting=True):
+        
+        subtitles = self.process_segments(advanced_splitting)
+
+        def write_subtitle(file, idx, start_time, end_time, text):
+
+            file.write(f"{idx}\n")
+            file.write(f"{start_time} --> {end_time}\n")
+            file.write(text + "\n\n")
+
+        with open(filename, 'w', encoding='utf-8') as file:
+            if self.is_vtt:
+                file.write("WEBVTT\n\n")
+            
+            if advanced_splitting:
+                for idx, subtitle in enumerate(subtitles, 1):
+                    start_time = format_timestamp(subtitle['start'], self.is_vtt)
+                    end_time = format_timestamp(subtitle['end'], self.is_vtt)
+                    text = subtitle['text'].strip()
+                    write_subtitle(file, idx, start_time, end_time, text)
+
+        return len(subtitles)
+
+================================================
+File: whisperx/__init__.py
+================================================
+from .alignment import load_align_model, align
+from .audio import load_audio
+from .diarize import assign_word_speakers, DiarizationPipeline
+from .asr import load_model
+
+
+================================================
+File: whisperx/__main__.py
+================================================
+from .transcribe import cli
+
+
+cli()
+
+
+================================================
+File: whisperx/alignment.py
+================================================
+"""
+Forced Alignment with Whisper
+C. Max Bain
+"""
+import math
+
+from dataclasses import dataclass
+from typing import Iterable, Optional, Union, List
+
+import numpy as np
+import pandas as pd
+import torch
+import torchaudio
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+
+from .audio import SAMPLE_RATE, load_audio
+from .utils import interpolate_nans
+from .types import (
+    AlignedTranscriptionResult,
+    SingleSegment,
+    SingleAlignedSegment,
+    SingleWordSegment,
+    SegmentData,
+)
+from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
+
+PUNKT_ABBREVIATIONS = ['dr', 'vs', 'mr', 'mrs', 'prof']
+
+LANGUAGES_WITHOUT_SPACES = ["ja", "zh"]
+
+DEFAULT_ALIGN_MODELS_TORCH = {
+    "en": "WAV2VEC2_ASR_BASE_960H",
+    "fr": "VOXPOPULI_ASR_BASE_10K_FR",
+    "de": "VOXPOPULI_ASR_BASE_10K_DE",
+    "es": "VOXPOPULI_ASR_BASE_10K_ES",
+    "it": "VOXPOPULI_ASR_BASE_10K_IT",
+}
+
+DEFAULT_ALIGN_MODELS_HF = {
+    "ja": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
+    "zh": "jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn",
+    "nl": "jonatasgrosman/wav2vec2-large-xlsr-53-dutch",
+    "uk": "Yehor/wav2vec2-xls-r-300m-uk-with-small-lm",
+    "pt": "jonatasgrosman/wav2vec2-large-xlsr-53-portuguese",
+    "ar": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
+    "cs": "comodoro/wav2vec2-xls-r-300m-cs-250",
+    "ru": "jonatasgrosman/wav2vec2-large-xlsr-53-russian",
+    "pl": "jonatasgrosman/wav2vec2-large-xlsr-53-polish",
+    "hu": "jonatasgrosman/wav2vec2-large-xlsr-53-hungarian",
+    "fi": "jonatasgrosman/wav2vec2-large-xlsr-53-finnish",
+    "fa": "jonatasgrosman/wav2vec2-large-xlsr-53-persian",
+    "el": "jonatasgrosman/wav2vec2-large-xlsr-53-greek",
+    "tr": "mpoyraz/wav2vec2-xls-r-300m-cv7-turkish",
+    "da": "saattrupdan/wav2vec2-xls-r-300m-ftspeech",
+    "he": "imvladikon/wav2vec2-xls-r-300m-hebrew",
+    "vi": 'nguyenvulebinh/wav2vec2-base-vi',
+    "ko": "kresnik/wav2vec2-large-xlsr-korean",
+    "ur": "kingabzpro/wav2vec2-large-xls-r-300m-Urdu",
+    "te": "anuragshas/wav2vec2-large-xlsr-53-telugu",
+    "hi": "theainerd/Wav2Vec2-large-xlsr-hindi",
+    "ca": "softcatala/wav2vec2-large-xlsr-catala",
+    "ml": "gvs/wav2vec2-large-xlsr-malayalam",
+    "no": "NbAiLab/nb-wav2vec2-1b-bokmaal-v2",
+    "nn": "NbAiLab/nb-wav2vec2-1b-nynorsk",
+    "sk": "comodoro/wav2vec2-xls-r-300m-sk-cv8",
+    "sl": "anton-l/wav2vec2-large-xlsr-53-slovenian",
+    "hr": "classla/wav2vec2-xls-r-parlaspeech-hr",
+    "ro": "gigant/romanian-wav2vec2",
+    "eu": "stefan-it/wav2vec2-large-xlsr-53-basque",
+    "gl": "ifrz/wav2vec2-large-xlsr-galician",
+    "ka": "xsway/wav2vec2-large-xlsr-georgian",
+    "lv": "jimregan/wav2vec2-large-xlsr-latvian-cv",
+}
+
+
+def load_align_model(language_code: str, device: str, model_name: Optional[str] = None, model_dir=None):
+    if model_name is None:
+        # use default model
+        if language_code in DEFAULT_ALIGN_MODELS_TORCH:
+            model_name = DEFAULT_ALIGN_MODELS_TORCH[language_code]
+        elif language_code in DEFAULT_ALIGN_MODELS_HF:
+            model_name = DEFAULT_ALIGN_MODELS_HF[language_code]
+        else:
+            print(f"There is no default alignment model set for this language ({language_code}).\
+                Please find a wav2vec2.0 model finetuned on this language in https://huggingface.co/models, then pass the model name in --align_model [MODEL_NAME]")
+            raise ValueError(f"No default align-model for language: {language_code}")
+
+    if model_name in torchaudio.pipelines.__all__:
+        pipeline_type = "torchaudio"
+        bundle = torchaudio.pipelines.__dict__[model_name]
+        align_model = bundle.get_model(dl_kwargs={"model_dir": model_dir}).to(device)
+        labels = bundle.get_labels()
+        align_dictionary = {c.lower(): i for i, c in enumerate(labels)}
+    else:
+        try:
+            processor = Wav2Vec2Processor.from_pretrained(model_name, cache_dir=model_dir)
+            align_model = Wav2Vec2ForCTC.from_pretrained(model_name, cache_dir=model_dir)
+        except Exception as e:
+            print(e)
+            print(f"Error loading model from huggingface, check https://huggingface.co/models for finetuned wav2vec2.0 models")
+            raise ValueError(f'The chosen align_model "{model_name}" could not be found in huggingface (https://huggingface.co/models) or torchaudio (https://pytorch.org/audio/stable/pipelines.html#id14)')
+        pipeline_type = "huggingface"
+        align_model = align_model.to(device)
+        labels = processor.tokenizer.get_vocab()
+        align_dictionary = {char.lower(): code for char,code in processor.tokenizer.get_vocab().items()}
+
+    align_metadata = {"language": language_code, "dictionary": align_dictionary, "type": pipeline_type}
+
+    return align_model, align_metadata
+
+
+def align(
+    transcript: Iterable[SingleSegment],
+    model: torch.nn.Module,
+    align_model_metadata: dict,
+    audio: Union[str, np.ndarray, torch.Tensor],
+    device: str,
+    interpolate_method: str = "nearest",
+    return_char_alignments: bool = False,
+    print_progress: bool = False,
+    combined_progress: bool = False,
+) -> AlignedTranscriptionResult:
+    """
+    Align phoneme recognition predictions to known transcription.
+    """
+    
+    if not torch.is_tensor(audio):
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+        audio = torch.from_numpy(audio)
+    if len(audio.shape) == 1:
+        audio = audio.unsqueeze(0)
+    
+    MAX_DURATION = audio.shape[1] / SAMPLE_RATE
+
+    model_dictionary = align_model_metadata["dictionary"]
+    model_lang = align_model_metadata["language"]
+    model_type = align_model_metadata["type"]
+
+    # 1. Preprocess to keep only characters in dictionary
+    total_segments = len(transcript)
+    # Store temporary processing values
+    segment_data: dict[int, SegmentData] = {}
+    for sdx, segment in enumerate(transcript):
+        # strip spaces at beginning / end, but keep track of the amount.
+        if print_progress:
+            base_progress = ((sdx + 1) / total_segments) * 100
+            percent_complete = (50 + base_progress / 2) if combined_progress else base_progress
+            print(f"Progress: {percent_complete:.2f}%...")
+            
+        num_leading = len(segment["text"]) - len(segment["text"].lstrip())
+        num_trailing = len(segment["text"]) - len(segment["text"].rstrip())
+        text = segment["text"]
+
+        # split into words
+        if model_lang not in LANGUAGES_WITHOUT_SPACES:
+            per_word = text.split(" ")
+        else:
+            per_word = text
+
+        clean_char, clean_cdx = [], []
+        for cdx, char in enumerate(text):
+            char_ = char.lower()
+            # wav2vec2 models use "|" character to represent spaces
+            if model_lang not in LANGUAGES_WITHOUT_SPACES:
+                char_ = char_.replace(" ", "|")
+            
+            # ignore whitespace at beginning and end of transcript
+            if cdx < num_leading:
+                pass
+            elif cdx > len(text) - num_trailing - 1:
+                pass
+            elif char_ in model_dictionary.keys():
+                clean_char.append(char_)
+                clean_cdx.append(cdx)
+            else:
+                # add placeholder
+                clean_char.append('*')
+                clean_cdx.append(cdx)
+
+        clean_wdx = []
+        for wdx, wrd in enumerate(per_word):
+            if any([c in model_dictionary.keys() for c in wrd.lower()]):
+                clean_wdx.append(wdx)
+            else:
+                # index for placeholder
+                clean_wdx.append(wdx)
+
+                
+        punkt_param = PunktParameters()
+        punkt_param.abbrev_types = set(PUNKT_ABBREVIATIONS)
+        sentence_splitter = PunktSentenceTokenizer(punkt_param)
+        sentence_spans = list(sentence_splitter.span_tokenize(text))
+
+        segment_data[sdx] = {
+            "clean_char": clean_char,
+            "clean_cdx": clean_cdx,
+            "clean_wdx": clean_wdx,
+            "sentence_spans": sentence_spans
+        }
+            
+    aligned_segments: List[SingleAlignedSegment] = []
+    
+    # 2. Get prediction matrix from alignment model & align
+    for sdx, segment in enumerate(transcript):
+        
+        t1 = segment["start"]
+        t2 = segment["end"]
+        text = segment["text"]
+
+        aligned_seg: SingleAlignedSegment = {
+            "start": t1,
+            "end": t2,
+            "text": text,
+            "words": [],
+            "chars": None,
+        }
+
+        if return_char_alignments:
+            aligned_seg["chars"] = []
+
+        # check we can align
+        if len(segment_data[sdx]["clean_char"]) == 0:
+            print(f'Failed to align segment ("{segment["text"]}"): no characters in this segment found in model dictionary, resorting to original...')
+            aligned_segments.append(aligned_seg)
+            continue
+
+        if t1 >= MAX_DURATION:
+            print(f'Failed to align segment ("{segment["text"]}"): original start time longer than audio duration, skipping...')
+            aligned_segments.append(aligned_seg)
+            continue
+
+        text_clean = "".join(segment_data[sdx]["clean_char"])
+        tokens = [model_dictionary.get(c, -1) for c in text_clean]
+
+        f1 = int(t1 * SAMPLE_RATE)
+        f2 = int(t2 * SAMPLE_RATE)
+
+        # TODO: Probably can get some speedup gain with batched inference here
+        waveform_segment = audio[:, f1:f2]
+        # Handle the minimum input length for wav2vec2 models
+        if waveform_segment.shape[-1] < 400:
+            lengths = torch.as_tensor([waveform_segment.shape[-1]]).to(device)
+            waveform_segment = torch.nn.functional.pad(
+                waveform_segment, (0, 400 - waveform_segment.shape[-1])
+            )
+        else:
+            lengths = None
+            
+        with torch.inference_mode():
+            if model_type == "torchaudio":
+                emissions, _ = model(waveform_segment.to(device), lengths=lengths)
+            elif model_type == "huggingface":
+                emissions = model(waveform_segment.to(device)).logits
+            else:
+                raise NotImplementedError(f"Align model of type {model_type} not supported.")
+            emissions = torch.log_softmax(emissions, dim=-1)
+
+        emission = emissions[0].cpu().detach()
+
+        blank_id = 0
+        for char, code in model_dictionary.items():
+            if char == '[pad]' or char == '<pad>':
+                blank_id = code
+
+        trellis = get_trellis(emission, tokens, blank_id)
+        # path = backtrack(trellis, emission, tokens, blank_id)
+        path = backtrack_beam(trellis, emission, tokens, blank_id, beam_width=2)
+
+        if path is None:
+            print(f'Failed to align segment ("{segment["text"]}"): backtrack failed, resorting to original...')
+            aligned_segments.append(aligned_seg)
+            continue
+
+        char_segments = merge_repeats(path, text_clean)
+
+        duration = t2 - t1
+        ratio = duration * waveform_segment.size(0) / (trellis.size(0) - 1)
+
+        # assign timestamps to aligned characters
+        char_segments_arr = []
+        word_idx = 0
+        for cdx, char in enumerate(text):
+            start, end, score = None, None, None
+            if cdx in segment_data[sdx]["clean_cdx"]:
+                char_seg = char_segments[segment_data[sdx]["clean_cdx"].index(cdx)]
+                start = round(char_seg.start * ratio + t1, 3)
+                end = round(char_seg.end * ratio + t1, 3)
+                score = round(char_seg.score, 3)
+
+            char_segments_arr.append(
+                {
+                    "char": char,
+                    "start": start,
+                    "end": end,
+                    "score": score,
+                    "word-idx": word_idx,
+                }
+            )
+
+            # increment word_idx, nltk word tokenization would probably be more robust here, but us space for now...
+            if model_lang in LANGUAGES_WITHOUT_SPACES:
+                word_idx += 1
+            elif cdx == len(text) - 1 or text[cdx+1] == " ":
+                word_idx += 1
+            
+        char_segments_arr = pd.DataFrame(char_segments_arr)
+
+        aligned_subsegments = []
+        # assign sentence_idx to each character index
+        char_segments_arr["sentence-idx"] = None
+        for sdx2, (sstart, send) in enumerate(segment_data[sdx]["sentence_spans"]):
+            curr_chars = char_segments_arr.loc[(char_segments_arr.index >= sstart) & (char_segments_arr.index <= send)]
+            char_segments_arr.loc[(char_segments_arr.index >= sstart) & (char_segments_arr.index <= send), "sentence-idx"] = sdx2
+
+            sentence_text = text[sstart:send]
+            sentence_start = curr_chars["start"].min()
+            end_chars = curr_chars[curr_chars["char"] != ' ']
+            sentence_end = end_chars["end"].max()
+            sentence_words = []
+
+            for word_idx in curr_chars["word-idx"].unique():
+                word_chars = curr_chars.loc[curr_chars["word-idx"] == word_idx]
+                word_text = "".join(word_chars["char"].tolist()).strip()
+                if len(word_text) == 0:
+                    continue
+
+                # dont use space character for alignment
+                word_chars = word_chars[word_chars["char"] != " "]
+
+                word_start = word_chars["start"].min()
+                word_end = word_chars["end"].max()
+                word_score = round(word_chars["score"].mean(), 3)
+
+                # -1 indicates unalignable 
+                word_segment = {"word": word_text}
+
+                if not np.isnan(word_start):
+                    word_segment["start"] = word_start
+                if not np.isnan(word_end):
+                    word_segment["end"] = word_end
+                if not np.isnan(word_score):
+                    word_segment["score"] = word_score
+
+                sentence_words.append(word_segment)
+            
+            aligned_subsegments.append({
+                "text": sentence_text,
+                "start": sentence_start,
+                "end": sentence_end,
+                "words": sentence_words,
+            })
+
+            if return_char_alignments:
+                curr_chars = curr_chars[["char", "start", "end", "score"]]
+                curr_chars.fillna(-1, inplace=True)
+                curr_chars = curr_chars.to_dict("records")
+                curr_chars = [{key: val for key, val in char.items() if val != -1} for char in curr_chars]
+                aligned_subsegments[-1]["chars"] = curr_chars
+
+        aligned_subsegments = pd.DataFrame(aligned_subsegments)
+        aligned_subsegments["start"] = interpolate_nans(aligned_subsegments["start"], method=interpolate_method)
+        aligned_subsegments["end"] = interpolate_nans(aligned_subsegments["end"], method=interpolate_method)
+        # concatenate sentences with same timestamps
+        agg_dict = {"text": " ".join, "words": "sum"}
+        if model_lang in LANGUAGES_WITHOUT_SPACES:
+            agg_dict["text"] = "".join
+        if return_char_alignments:
+            agg_dict["chars"] = "sum"
+        aligned_subsegments= aligned_subsegments.groupby(["start", "end"], as_index=False).agg(agg_dict)
+        aligned_subsegments = aligned_subsegments.to_dict('records')
+        aligned_segments += aligned_subsegments
+
+    # create word_segments list
+    word_segments: List[SingleWordSegment] = []
+    for segment in aligned_segments:
+        word_segments += segment["words"]
+
+    return {"segments": aligned_segments, "word_segments": word_segments}
+
+"""
+source: https://pytorch.org/tutorials/intermediate/forced_alignment_with_torchaudio_tutorial.html
+"""
+
+
+def get_trellis(emission, tokens, blank_id=0):
+    num_frame = emission.size(0)
+    num_tokens = len(tokens)
+
+    trellis = torch.zeros((num_frame, num_tokens))
+    trellis[1:, 0] = torch.cumsum(emission[1:, blank_id], 0)
+    trellis[0, 1:] = -float("inf")
+    trellis[-num_tokens + 1:, 0] = float("inf")
+
+    for t in range(num_frame - 1):
+        trellis[t + 1, 1:] = torch.maximum(
+            # Score for staying at the same token
+            trellis[t, 1:] + emission[t, blank_id],
+            # Score for changing to the next token
+            # trellis[t, :-1] + emission[t, tokens[1:]],
+            trellis[t, :-1] + get_wildcard_emission(emission[t], tokens[1:], blank_id),
+        )
+    return trellis
+
+
+def get_wildcard_emission(frame_emission, tokens, blank_id):
+    """Processing token emission scores containing wildcards (vectorized version)
+
+    Args:
+        frame_emission: Emission probability vector for the current frame
+        tokens: List of token indices
+        blank_id: ID of the blank token
+
+    Returns:
+        tensor: Maximum probability score for each token position
+    """
+    assert 0 <= blank_id < len(frame_emission)
+
+    # Convert tokens to a tensor if they are not already
+    tokens = torch.tensor(tokens) if not isinstance(tokens, torch.Tensor) else tokens
+
+    # Create a mask to identify wildcard positions
+    wildcard_mask = (tokens == -1)
+
+    # Get scores for non-wildcard positions
+    regular_scores = frame_emission[tokens.clamp(min=0)]  # clamp to avoid -1 index
+
+    # Create a mask and compute the maximum value without modifying frame_emission
+    max_valid_score = frame_emission.clone()   # Create a copy
+    max_valid_score[blank_id] = float('-inf')  # Modify the copy to exclude the blank token
+    max_valid_score = max_valid_score.max()
+
+    # Use where operation to combine results
+    result = torch.where(wildcard_mask, max_valid_score, regular_scores)
+
+    return result
+
+
+@dataclass
+class Point:
+    token_index: int
+    time_index: int
+    score: float
+
+
+def backtrack(trellis, emission, tokens, blank_id=0):
+    t, j = trellis.size(0) - 1, trellis.size(1) - 1
+
+    path = [Point(j, t, emission[t, blank_id].exp().item())]
+    while j > 0:
+        # Should not happen but just in case
+        assert t > 0
+
+        # 1. Figure out if the current position was stay or change
+        # Frame-wise score of stay vs change
+        p_stay = emission[t - 1, blank_id]
+        # p_change = emission[t - 1, tokens[j]]
+        p_change = get_wildcard_emission(emission[t - 1], [tokens[j]], blank_id)[0]
+
+        # Context-aware score for stay vs change
+        stayed = trellis[t - 1, j] + p_stay
+        changed = trellis[t - 1, j - 1] + p_change
+
+        # Update position
+        t -= 1
+        if changed > stayed:
+            j -= 1
+
+        # Store the path with frame-wise probability.
+        prob = (p_change if changed > stayed else p_stay).exp().item()
+        path.append(Point(j, t, prob))
+
+    # Now j == 0, which means, it reached the SoS.
+    # Fill up the rest for the sake of visualization
+    while t > 0:
+        prob = emission[t - 1, blank_id].exp().item()
+        path.append(Point(j, t - 1, prob))
+        t -= 1
+
+    return path[::-1]
+
+
+
+@dataclass
+class Path:
+    points: List[Point]
+    score: float
+
+
+@dataclass
+class BeamState:
+    """State in beam search."""
+    token_index: int   # Current token position
+    time_index: int    # Current time step
+    score: float       # Cumulative score
+    path: List[Point]  # Path history
+
+
+def backtrack_beam(trellis, emission, tokens, blank_id=0, beam_width=5):
+    """Standard CTC beam search backtracking implementation.
+
+    Args:
+        trellis (torch.Tensor): The trellis (or lattice) of shape (T, N), where T is the number of time steps
+                                and N is the number of tokens (including the blank token).
+        emission (torch.Tensor): The emission probabilities of shape (T, N).
+        tokens (List[int]): List of token indices (excluding the blank token).
+        blank_id (int, optional): The ID of the blank token. Defaults to 0.
+        beam_width (int, optional): The number of top paths to keep during beam search. Defaults to 5.
+
+    Returns:
+        List[Point]: the best path
+    """
+    T, J = trellis.size(0) - 1, trellis.size(1) - 1
+
+    init_state = BeamState(
+        token_index=J,
+        time_index=T,
+        score=trellis[T, J],
+        path=[Point(J, T, emission[T, blank_id].exp().item())]
+    )
+
+    beams = [init_state]
+
+    while beams and beams[0].token_index > 0:
+        next_beams = []
+
+        for beam in beams:
+            t, j = beam.time_index, beam.token_index
+
+            if t <= 0:
+                continue
+
+            p_stay = emission[t - 1, blank_id]
+            p_change = get_wildcard_emission(emission[t - 1], [tokens[j]], blank_id)[0]
+
+            stay_score = trellis[t - 1, j]
+            change_score = trellis[t - 1, j - 1] if j > 0 else float('-inf')
+
+            # Stay
+            if not math.isinf(stay_score):
+                new_path = beam.path.copy()
+                new_path.append(Point(j, t - 1, p_stay.exp().item()))
+                next_beams.append(BeamState(
+                    token_index=j,
+                    time_index=t - 1,
+                    score=stay_score,
+                    path=new_path
+                ))
+
+            # Change
+            if j > 0 and not math.isinf(change_score):
+                new_path = beam.path.copy()
+                new_path.append(Point(j - 1, t - 1, p_change.exp().item()))
+                next_beams.append(BeamState(
+                    token_index=j - 1,
+                    time_index=t - 1,
+                    score=change_score,
+                    path=new_path
+                ))
+
+        # sort by score
+        beams = sorted(next_beams, key=lambda x: x.score, reverse=True)[:beam_width]
+
+        if not beams:
+            break
+
+    if not beams:
+        return None
+
+    best_beam = beams[0]
+    t = best_beam.time_index
+    j = best_beam.token_index
+    while t > 0:
+        prob = emission[t - 1, blank_id].exp().item()
+        best_beam.path.append(Point(j, t - 1, prob))
+        t -= 1
+
+    return best_beam.path[::-1]
+
+
+# Merge the labels
+@dataclass
+class Segment:
+    label: str
+    start: int
+    end: int
+    score: float
+
+    def __repr__(self):
+        return f"{self.label}\t({self.score:4.2f}): [{self.start:5d}, {self.end:5d})"
+
+    @property
+    def length(self):
+        return self.end - self.start
+
+def merge_repeats(path, transcript):
+    i1, i2 = 0, 0
+    segments = []
+    while i1 < len(path):
+        while i2 < len(path) and path[i1].token_index == path[i2].token_index:
+            i2 += 1
+        score = sum(path[k].score for k in range(i1, i2)) / (i2 - i1)
+        segments.append(
+            Segment(
+                transcript[path[i1].token_index],
+                path[i1].time_index,
+                path[i2 - 1].time_index + 1,
+                score,
+            )
+        )
+        i1 = i2
+    return segments
+
+def merge_words(segments, separator="|"):
+    words = []
+    i1, i2 = 0, 0
+    while i1 < len(segments):
+        if i2 >= len(segments) or segments[i2].label == separator:
+            if i1 != i2:
+                segs = segments[i1:i2]
+                word = "".join([seg.label for seg in segs])
+                score = sum(seg.score * seg.length for seg in segs) / sum(seg.length for seg in segs)
+                words.append(Segment(word, segments[i1].start, segments[i2 - 1].end, score))
+            i1 = i2 + 1
+            i2 = i1
+        else:
+            i2 += 1
+    return words
+
+
+================================================
+File: whisperx/asr.py
+================================================
+import os
+from typing import List, Optional, Union
+from dataclasses import replace
+
+import ctranslate2
+import faster_whisper
+import numpy as np
+import torch
+from faster_whisper.tokenizer import Tokenizer
+from faster_whisper.transcribe import TranscriptionOptions, get_ctranslate2_storage
+from transformers import Pipeline
+from transformers.pipelines.pt_utils import PipelineIterator
+
+from .audio import N_SAMPLES, SAMPLE_RATE, load_audio, log_mel_spectrogram
+from .types import SingleSegment, TranscriptionResult
+from .vads import Vad, Silero, Pyannote
+
+def find_numeral_symbol_tokens(tokenizer):
+    numeral_symbol_tokens = []
+    for i in range(tokenizer.eot):
+        token = tokenizer.decode([i]).removeprefix(" ")
+        has_numeral_symbol = any(c in "0123456789%$£" for c in token)
+        if has_numeral_symbol:
+            numeral_symbol_tokens.append(i)
+    return numeral_symbol_tokens
+
+class WhisperModel(faster_whisper.WhisperModel):
+    '''
+    FasterWhisperModel provides batched inference for faster-whisper.
+    Currently only works in non-timestamp mode and fixed prompt for all samples in batch.
+    '''
+
+    def generate_segment_batched(
+        self,
+        features: np.ndarray,
+        tokenizer: Tokenizer,
+        options: TranscriptionOptions,
+        encoder_output=None,
+    ):
+        batch_size = features.shape[0]
+        all_tokens = []
+        prompt_reset_since = 0
+        if options.initial_prompt is not None:
+            initial_prompt = " " + options.initial_prompt.strip()
+            initial_prompt_tokens = tokenizer.encode(initial_prompt)
+            all_tokens.extend(initial_prompt_tokens)
+        previous_tokens = all_tokens[prompt_reset_since:]
+        prompt = self.get_prompt(
+            tokenizer,
+            previous_tokens,
+            without_timestamps=options.without_timestamps,
+            prefix=options.prefix,
+        )
+
+        encoder_output = self.encode(features)
+
+        max_initial_timestamp_index = int(
+            round(options.max_initial_timestamp / self.time_precision)
+        )
+
+        result = self.model.generate(
+                encoder_output,
+                [prompt] * batch_size,
+                beam_size=options.beam_size,
+                patience=options.patience,
+                length_penalty=options.length_penalty,
+                max_length=self.max_length,
+                suppress_blank=options.suppress_blank,
+                suppress_tokens=options.suppress_tokens,
+            )
+
+        tokens_batch = [x.sequences_ids[0] for x in result]
+
+        def decode_batch(tokens: List[List[int]]) -> str:
+            res = []
+            for tk in tokens:
+                res.append([token for token in tk if token < tokenizer.eot])
+            # text_tokens = [token for token in tokens if token < self.eot]
+            return tokenizer.tokenizer.decode_batch(res)
+
+        text = decode_batch(tokens_batch)
+
+        return text
+
+    def encode(self, features: np.ndarray) -> ctranslate2.StorageView:
+        # When the model is running on multiple GPUs, the encoder output should be moved
+        # to the CPU since we don't know which GPU will handle the next job.
+        to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
+        # unsqueeze if batch size = 1
+        if len(features.shape) == 2:
+            features = np.expand_dims(features, 0)
+        features = get_ctranslate2_storage(features)
+
+        return self.model.encode(features, to_cpu=to_cpu)
+
+class FasterWhisperPipeline(Pipeline):
+    """
+    Huggingface Pipeline wrapper for FasterWhisperModel.
+    """
+    # TODO:
+    # - add support for timestamp mode
+    # - add support for custom inference kwargs
+
+    def __init__(
+        self,
+        model: WhisperModel,
+        vad,
+        vad_params: dict,
+        options: TranscriptionOptions,
+        tokenizer: Optional[Tokenizer] = None,
+        device: Union[int, str, "torch.device"] = -1,
+        framework="pt",
+        language: Optional[str] = None,
+        suppress_numerals: bool = False,
+        **kwargs,
+    ):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.options = options
+        self.preset_language = language
+        self.suppress_numerals = suppress_numerals
+        self._batch_size = kwargs.pop("batch_size", None)
+        self._num_workers = 1
+        self._preprocess_params, self._forward_params, self._postprocess_params = self._sanitize_parameters(**kwargs)
+        self.call_count = 0
+        self.framework = framework
+        if self.framework == "pt":
+            if isinstance(device, torch.device):
+                self.device = device
+            elif isinstance(device, str):
+                self.device = torch.device(device)
+            elif device < 0:
+                self.device = torch.device("cpu")
+            else:
+                self.device = torch.device(f"cuda:{device}")
+        else:
+            self.device = device
+
+        super(Pipeline, self).__init__()
+        self.vad_model = vad
+        self._vad_params = vad_params
+
+    def _sanitize_parameters(self, **kwargs):
+        preprocess_kwargs = {}
+        if "tokenizer" in kwargs:
+            preprocess_kwargs["maybe_arg"] = kwargs["maybe_arg"]
+        return preprocess_kwargs, {}, {}
+
+    def preprocess(self, audio):
+        audio = audio['inputs']
+        model_n_mels = self.model.feat_kwargs.get("feature_size")
+        features = log_mel_spectrogram(
+            audio,
+            n_mels=model_n_mels if model_n_mels is not None else 80,
+            padding=N_SAMPLES - audio.shape[0],
+        )
+        return {'inputs': features}
+
+    def _forward(self, model_inputs):
+        outputs = self.model.generate_segment_batched(model_inputs['inputs'], self.tokenizer, self.options)
+        return {'text': outputs}
+
+    def postprocess(self, model_outputs):
+        return model_outputs
+
+    def get_iterator(
+        self,
+        inputs,
+        num_workers: int,
+        batch_size: int,
+        preprocess_params: dict,
+        forward_params: dict,
+        postprocess_params: dict,
+    ):
+        dataset = PipelineIterator(inputs, self.preprocess, preprocess_params)
+        if "TOKENIZERS_PARALLELISM" not in os.environ:
+            os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        # TODO hack by collating feature_extractor and image_processor
+
+        def stack(items):
+            return {'inputs': torch.stack([x['inputs'] for x in items])}
+        dataloader = torch.utils.data.DataLoader(dataset, num_workers=num_workers, batch_size=batch_size, collate_fn=stack)
+        model_iterator = PipelineIterator(dataloader, self.forward, forward_params, loader_batch_size=batch_size)
+        final_iterator = PipelineIterator(model_iterator, self.postprocess, postprocess_params)
+        return final_iterator
+
+    def transcribe(
+        self,
+        audio: Union[str, np.ndarray],
+        batch_size: Optional[int] = None,
+        num_workers=0,
+        language: Optional[str] = None,
+        task: Optional[str] = None,
+        chunk_size=30,
+        print_progress=False,
+        combined_progress=False,
+        verbose=False,
+    ) -> TranscriptionResult:
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+
+        def data(audio, segments):
+            for seg in segments:
+                f1 = int(seg['start'] * SAMPLE_RATE)
+                f2 = int(seg['end'] * SAMPLE_RATE)
+                # print(f2-f1)
+                yield {'inputs': audio[f1:f2]}
+
+        # Pre-process audio and merge chunks as defined by the respective VAD child class 
+        # In case vad_model is manually assigned (see 'load_model') follow the functionality of pyannote toolkit
+        if issubclass(type(self.vad_model), Vad):
+            waveform = self.vad_model.preprocess_audio(audio)
+            merge_chunks =  self.vad_model.merge_chunks
+        else:
+            waveform = Pyannote.preprocess_audio(audio)
+            merge_chunks = Pyannote.merge_chunks
+
+        vad_segments = self.vad_model({"waveform": waveform, "sample_rate": SAMPLE_RATE})
+        vad_segments = merge_chunks(
+            vad_segments,
+            chunk_size,
+            onset=self._vad_params["vad_onset"],
+            offset=self._vad_params["vad_offset"],
+        )
+        if self.tokenizer is None:
+            language = language or self.detect_language(audio)
+            task = task or "transcribe"
+            self.tokenizer = Tokenizer(
+                self.model.hf_tokenizer,
+                self.model.model.is_multilingual,
+                task=task,
+                language=language,
+            )
+        else:
+            language = language or self.tokenizer.language_code
+            task = task or self.tokenizer.task
+            if task != self.tokenizer.task or language != self.tokenizer.language_code:
+                self.tokenizer = Tokenizer(
+                    self.model.hf_tokenizer,
+                    self.model.model.is_multilingual,
+                    task=task,
+                    language=language,
+                )
+
+        if self.suppress_numerals:
+            previous_suppress_tokens = self.options.suppress_tokens
+            numeral_symbol_tokens = find_numeral_symbol_tokens(self.tokenizer)
+            print(f"Suppressing numeral and symbol tokens")
+            new_suppressed_tokens = numeral_symbol_tokens + self.options.suppress_tokens
+            new_suppressed_tokens = list(set(new_suppressed_tokens))
+            self.options = replace(self.options, suppress_tokens=new_suppressed_tokens)
+
+        segments: List[SingleSegment] = []
+        batch_size = batch_size or self._batch_size
+        total_segments = len(vad_segments)
+        for idx, out in enumerate(self.__call__(data(audio, vad_segments), batch_size=batch_size, num_workers=num_workers)):
+            if print_progress:
+                base_progress = ((idx + 1) / total_segments) * 100
+                percent_complete = base_progress / 2 if combined_progress else base_progress
+                print(f"Progress: {percent_complete:.2f}%...")
+            text = out['text']
+            if batch_size in [0, 1, None]:
+                text = text[0]
+            if verbose:
+                print(f"Transcript: [{round(vad_segments[idx]['start'], 3)} --> {round(vad_segments[idx]['end'], 3)}] {text}")
+            segments.append(
+                {
+                    "text": text,
+                    "start": round(vad_segments[idx]['start'], 3),
+                    "end": round(vad_segments[idx]['end'], 3)
+                }
+            )
+
+        # revert the tokenizer if multilingual inference is enabled
+        if self.preset_language is None:
+            self.tokenizer = None
+
+        # revert suppressed tokens if suppress_numerals is enabled
+        if self.suppress_numerals:
+            self.options = replace(self.options, suppress_tokens=previous_suppress_tokens)
+
+        return {"segments": segments, "language": language}
+
+    def detect_language(self, audio: np.ndarray) -> str:
+        if audio.shape[0] < N_SAMPLES:
+            print("Warning: audio is shorter than 30s, language detection may be inaccurate.")
+        model_n_mels = self.model.feat_kwargs.get("feature_size")
+        segment = log_mel_spectrogram(audio[: N_SAMPLES],
+                                      n_mels=model_n_mels if model_n_mels is not None else 80,
+                                      padding=0 if audio.shape[0] >= N_SAMPLES else N_SAMPLES - audio.shape[0])
+        encoder_output = self.model.encode(segment)
+        results = self.model.model.detect_language(encoder_output)
+        language_token, language_probability = results[0][0]
+        language = language_token[2:-2]
+        print(f"Detected language: {language} ({language_probability:.2f}) in first 30s of audio...")
+        return language
+
+
+def load_model(
+    whisper_arch: str,
+    device: str,
+    device_index=0,
+    compute_type="float16",
+    asr_options: Optional[dict] = None,
+    language: Optional[str] = None,
+    vad_model: Optional[Vad]= None,
+    vad_method: Optional[str] = "pyannote",
+    vad_options: Optional[dict] = None,
+    model: Optional[WhisperModel] = None,
+    task="transcribe",
+    download_root: Optional[str] = None,
+    local_files_only=False,
+    threads=4,
+) -> FasterWhisperPipeline:
+    """Load a Whisper model for inference.
+    Args:
+        whisper_arch - The name of the Whisper model to load.
+        device - The device to load the model on.
+        compute_type - The compute type to use for the model.
+        vad_method - The vad method to use. vad_model has higher priority if is not None.
+        options - A dictionary of options to use for the model.
+        language - The language of the model. (use English for now)
+        model - The WhisperModel instance to use.
+        download_root - The root directory to download the model to.
+        local_files_only - If `True`, avoid downloading the file and return the path to the local cached file if it exists.
+        threads - The number of cpu threads to use per worker, e.g. will be multiplied by num workers.
+    Returns:
+        A Whisper pipeline.
+    """
+
+    if whisper_arch.endswith(".en"):
+        language = "en"
+
+    model = model or WhisperModel(whisper_arch,
+                         device=device,
+                         device_index=device_index,
+                         compute_type=compute_type,
+                         download_root=download_root,
+                         local_files_only=local_files_only,
+                         cpu_threads=threads)
+    if language is not None:
+        tokenizer = Tokenizer(model.hf_tokenizer, model.model.is_multilingual, task=task, language=language)
+    else:
+        print("No language specified, language will be first be detected for each audio file (increases inference time).")
+        tokenizer = None
+
+    default_asr_options =  {
+        "beam_size": 5,
+        "best_of": 5,
+        "patience": 1,
+        "length_penalty": 1,
+        "repetition_penalty": 1,
+        "no_repeat_ngram_size": 0,
+        "temperatures": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        "compression_ratio_threshold": 2.4,
+        "log_prob_threshold": -1.0,
+        "no_speech_threshold": 0.6,
+        "condition_on_previous_text": False,
+        "prompt_reset_on_temperature": 0.5,
+        "initial_prompt": None,
+        "prefix": None,
+        "suppress_blank": True,
+        "suppress_tokens": [-1],
+        "without_timestamps": True,
+        "max_initial_timestamp": 0.0,
+        "word_timestamps": False,
+        "prepend_punctuations": "\"'“¿([{-",
+        "append_punctuations": "\"'.。,，!！?？:：”)]}、",
+        "multilingual": model.model.is_multilingual,
+        "suppress_numerals": False,
+        "max_new_tokens": None,
+        "clip_timestamps": None,
+        "hallucination_silence_threshold": None,
+        "hotwords": None,
+    }
+
+    if asr_options is not None:
+        default_asr_options.update(asr_options)
+
+    suppress_numerals = default_asr_options["suppress_numerals"]
+    del default_asr_options["suppress_numerals"]
+
+    default_asr_options = TranscriptionOptions(**default_asr_options)
+
+    default_vad_options = {
+        "chunk_size": 30, # needed by silero since binarization happens before merge_chunks
+        "vad_onset": 0.500,
+        "vad_offset": 0.363
+    }
+
+    if vad_options is not None:
+        default_vad_options.update(vad_options)
+
+    # Note: manually assigned vad_model has higher priority than vad_method!
+    if vad_model is not None:
+        print("Use manually assigned vad_model. vad_method is ignored.")
+        vad_model = vad_model
+    else:
+        if vad_method == "silero":
+            vad_model = Silero(**default_vad_options)
+        elif vad_method == "pyannote":
+            vad_model = Pyannote(torch.device(device), use_auth_token=None, **default_vad_options)
+        else:
+            raise ValueError(f"Invalid vad_method: {vad_method}")
+
+    return FasterWhisperPipeline(
+        model=model,
+        vad=vad_model,
+        options=default_asr_options,
+        tokenizer=tokenizer,
+        language=language,
+        suppress_numerals=suppress_numerals,
+        vad_params=default_vad_options,
+    )
+
+
+================================================
+File: whisperx/audio.py
+================================================
+import os
+import subprocess
+from functools import lru_cache
+from typing import Optional, Union
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from .utils import exact_div
+
+# hard-coded audio hyperparameters
+SAMPLE_RATE = 16000
+N_FFT = 400
+HOP_LENGTH = 160
+CHUNK_LENGTH = 30
+N_SAMPLES = CHUNK_LENGTH * SAMPLE_RATE  # 480000 samples in a 30-second chunk
+N_FRAMES = exact_div(N_SAMPLES, HOP_LENGTH)  # 3000 frames in a mel spectrogram input
+
+N_SAMPLES_PER_TOKEN = HOP_LENGTH * 2  # the initial convolutions has stride 2
+FRAMES_PER_SECOND = exact_div(SAMPLE_RATE, HOP_LENGTH)  # 10ms per audio frame
+TOKENS_PER_SECOND = exact_div(SAMPLE_RATE, N_SAMPLES_PER_TOKEN)  # 20ms per audio token
+
+
+def load_audio(file: str, sr: int = SAMPLE_RATE) -> np.ndarray:
+    """
+    Open an audio file and read as mono waveform, resampling as necessary
+
+    Parameters
+    ----------
+    file: str
+        The audio file to open
+
+    sr: int
+        The sample rate to resample the audio if necessary
+
+    Returns
+    -------
+    A NumPy array containing the audio waveform, in float32 dtype.
+    """
+    try:
+        # Launches a subprocess to decode audio while down-mixing and resampling as necessary.
+        # Requires the ffmpeg CLI to be installed.
+        cmd = [
+            "ffmpeg",
+            "-nostdin",
+            "-threads",
+            "0",
+            "-i",
+            file,
+            "-f",
+            "s16le",
+            "-ac",
+            "1",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            str(sr),
+            "-",
+        ]
+        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
+    return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+
+
+def pad_or_trim(array, length: int = N_SAMPLES, *, axis: int = -1):
+    """
+    Pad or trim the audio array to N_SAMPLES, as expected by the encoder.
+    """
+    if torch.is_tensor(array):
+        if array.shape[axis] > length:
+            array = array.index_select(
+                dim=axis, index=torch.arange(length, device=array.device)
+            )
+
+        if array.shape[axis] < length:
+            pad_widths = [(0, 0)] * array.ndim
+            pad_widths[axis] = (0, length - array.shape[axis])
+            array = F.pad(array, [pad for sizes in pad_widths[::-1] for pad in sizes])
+    else:
+        if array.shape[axis] > length:
+            array = array.take(indices=range(length), axis=axis)
+
+        if array.shape[axis] < length:
+            pad_widths = [(0, 0)] * array.ndim
+            pad_widths[axis] = (0, length - array.shape[axis])
+            array = np.pad(array, pad_widths)
+
+    return array
+
+
+@lru_cache(maxsize=None)
+def mel_filters(device, n_mels: int) -> torch.Tensor:
+    """
+    load the mel filterbank matrix for projecting STFT into a Mel spectrogram.
+    Allows decoupling librosa dependency; saved using:
+
+        np.savez_compressed(
+            "mel_filters.npz",
+            mel_80=librosa.filters.mel(sr=16000, n_fft=400, n_mels=80),
+        )
+    """
+    assert n_mels in [80, 128], f"Unsupported n_mels: {n_mels}"
+    with np.load(
+        os.path.join(os.path.dirname(__file__), "assets", "mel_filters.npz")
+    ) as f:
+        return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
+
+
+def log_mel_spectrogram(
+    audio: Union[str, np.ndarray, torch.Tensor],
+    n_mels: int,
+    padding: int = 0,
+    device: Optional[Union[str, torch.device]] = None,
+):
+    """
+    Compute the log-Mel spectrogram of
+
+    Parameters
+    ----------
+    audio: Union[str, np.ndarray, torch.Tensor], shape = (*)
+        The path to audio or either a NumPy array or Tensor containing the audio waveform in 16 kHz
+
+    n_mels: int
+        The number of Mel-frequency filters, only 80 is supported
+
+    padding: int
+        Number of zero samples to pad to the right
+
+    device: Optional[Union[str, torch.device]]
+        If given, the audio tensor is moved to this device before STFT
+
+    Returns
+    -------
+    torch.Tensor, shape = (80, n_frames)
+        A Tensor that contains the Mel spectrogram
+    """
+    if not torch.is_tensor(audio):
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+        audio = torch.from_numpy(audio)
+
+    if device is not None:
+        audio = audio.to(device)
+    if padding > 0:
+        audio = F.pad(audio, (0, padding))
+    window = torch.hann_window(N_FFT).to(audio.device)
+    stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
+    magnitudes = stft[..., :-1].abs() ** 2
+
+    filters = mel_filters(audio.device, n_mels)
+    mel_spec = filters @ magnitudes
+
+    log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+    log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+    log_spec = (log_spec + 4.0) / 4.0
+    return log_spec
+
+
+================================================
+File: whisperx/conjunctions.py
+================================================
+# conjunctions.py
+
+from typing import Set
+
+
+conjunctions_by_language = {
+    'en': {'and', 'whether', 'or', 'as', 'but', 'so', 'for', 'nor', 'which', 'yet', 'although', 'since', 'unless', 'when', 'while', 'because', 'if', 'how', 'that', 'than', 'who', 'where', 'what', 'near', 'before', 'after', 'across', 'through', 'until', 'once', 'whereas', 'even', 'both', 'either', 'neither', 'though'},
+    'fr': {'et', 'ou', 'mais', 'parce', 'bien', 'pendant', 'quand', 'où', 'comme', 'si', 'que', 'avant', 'après', 'aussitôt', 'jusqu’à', 'à', 'malgré', 'donc', 'tant', 'puisque', 'ni', 'soit', 'bien', 'encore', 'dès', 'lorsque'},
+    'de': {'und', 'oder', 'aber', 'weil', 'obwohl', 'während', 'wenn', 'wo', 'wie', 'dass', 'bevor', 'nachdem', 'sobald', 'bis', 'außer', 'trotzdem', 'also', 'sowie', 'indem', 'weder', 'sowohl', 'zwar', 'jedoch'},
+    'es': {'y', 'o', 'pero', 'porque', 'aunque', 'sin', 'mientras', 'cuando', 'donde', 'como', 'si', 'que', 'antes', 'después', 'tan', 'hasta', 'a', 'a', 'por', 'ya', 'ni', 'sino'},
+    'it': {'e', 'o', 'ma', 'perché', 'anche', 'mentre', 'quando', 'dove', 'come', 'se', 'che', 'prima', 'dopo', 'appena', 'fino', 'a', 'nonostante', 'quindi', 'poiché', 'né', 'ossia', 'cioè'},
+    'ja': {'そして', 'または', 'しかし', 'なぜなら', 'もし', 'それとも', 'だから', 'それに', 'なのに', 'そのため', 'かつ', 'それゆえに', 'ならば', 'もしくは', 'ため'},
+    'zh': {'和', '或', '但是', '因为', '任何', '也', '虽然', '而且', '所以', '如果', '除非', '尽管', '既然', '即使', '只要', '直到', '然后', '因此', '不但', '而是', '不过'},
+    'nl': {'en', 'of', 'maar', 'omdat', 'hoewel', 'terwijl', 'wanneer', 'waar', 'zoals', 'als', 'dat', 'voordat', 'nadat', 'zodra', 'totdat', 'tenzij', 'ondanks', 'dus', 'zowel', 'noch', 'echter', 'toch'},
+    'uk': {'та', 'або', 'але', 'тому', 'хоча', 'поки', 'бо', 'коли', 'де', 'як', 'якщо', 'що', 'перш', 'після', 'доки', 'незважаючи', 'тому', 'ані'},
+    'pt': {'e', 'ou', 'mas', 'porque', 'embora', 'enquanto', 'quando', 'onde', 'como', 'se', 'que', 'antes', 'depois', 'assim', 'até', 'a', 'apesar', 'portanto', 'já', 'pois', 'nem', 'senão'},
+    'ar': {'و', 'أو', 'لكن', 'لأن', 'مع', 'بينما', 'عندما', 'حيث', 'كما', 'إذا', 'الذي', 'قبل', 'بعد', 'فور', 'حتى', 'إلا', 'رغم', 'لذلك', 'بما'},
+    'cs': {'a', 'nebo', 'ale', 'protože', 'ačkoli', 'zatímco', 'když', 'kde', 'jako', 'pokud', 'že', 'než', 'poté', 'jakmile', 'dokud', 'pokud ne', 'navzdory', 'tak', 'stejně', 'ani', 'tudíž'},
+    'ru': {'и', 'или', 'но', 'потому', 'хотя', 'пока', 'когда', 'где', 'как', 'если', 'что', 'перед', 'после', 'несмотря', 'таким', 'также', 'ни', 'зато'},
+    'pl': {'i', 'lub', 'ale', 'ponieważ', 'chociaż', 'podczas', 'kiedy', 'gdzie', 'jak', 'jeśli', 'że', 'zanim', 'po', 'jak tylko', 'dopóki', 'chyba', 'pomimo', 'więc', 'tak', 'ani', 'czyli'},
+    'hu': {'és', 'vagy', 'de', 'mert', 'habár', 'míg', 'amikor', 'ahol', 'ahogy', 'ha', 'hogy', 'mielőtt', 'miután', 'amint', 'amíg', 'hacsak', 'ellenére', 'tehát', 'úgy', 'sem', 'vagyis'},
+    'fi': {'ja', 'tai', 'mutta', 'koska', 'vaikka', 'kun', 'missä', 'kuten', 'jos', 'että', 'ennen', 'sen jälkeen', 'heti', 'kunnes', 'ellei', 'huolimatta', 'siis', 'sekä', 'eikä', 'vaan'},
+    'fa': {'و', 'یا', 'اما', 'چون', 'اگرچه', 'در حالی', 'وقتی', 'کجا', 'چگونه', 'اگر', 'که', 'قبل', 'پس', 'به محض', 'تا زمانی', 'مگر', 'با وجود', 'پس', 'همچنین', 'نه'},
+    'el': {'και', 'ή', 'αλλά', 'επειδή', 'αν', 'ενώ', 'όταν', 'όπου', 'όπως', 'αν', 'που', 'προτού', 'αφού', 'μόλις', 'μέχρι', 'εκτός', 'παρά', 'έτσι', 'όπως', 'ούτε', 'δηλαδή'},
+    'tr': {'ve', 'veya', 'ama', 'çünkü', 'her ne', 'iken', 'nerede', 'nasıl', 'eğer', 'ki', 'önce', 'sonra', 'hemen', 'kadar', 'rağmen', 'hem', 'ne', 'yani'},
+    'da': {'og', 'eller', 'men', 'fordi', 'selvom', 'mens', 'når', 'hvor', 'som', 'hvis', 'at', 'før', 'efter', 'indtil', 'medmindre', 'således', 'ligesom', 'hverken', 'altså'},
+    'he': {'ו', 'או', 'אבל', 'כי', 'אף', 'בזמן', 'כאשר', 'היכן', 'כיצד', 'אם', 'ש', 'לפני', 'אחרי', 'ברגע', 'עד', 'אלא', 'למרות', 'לכן', 'כמו', 'לא', 'אז'},
+    'vi': {'và', 'hoặc', 'nhưng', 'bởi', 'mặc', 'trong', 'khi', 'ở', 'như', 'nếu', 'rằng', 'trước', 'sau', 'ngay', 'cho', 'trừ', 'mặc', 'vì', 'giống', 'cũng', 'tức'},
+    'ko': {'그리고', '또는','그런데','그래도', '이나', '결국', '마지막으로', '마찬가지로', '반면에', '아니면', '거나', '또는', '그럼에도', '그렇기', '때문에', '덧붙이자면', '게다가', '그러나',  '고', '그래서', '랑', '한다면', '하지만', '무엇', '왜냐하면', '비록', '동안', '언제', '어디서', '어떻게', '만약', '그', '전에', '후에', '즉시', '까지', '아니라면', '불구하고', '따라서', '같은', '도'},
+    'ur': {'اور', 'یا', 'مگر', 'کیونکہ', 'اگرچہ', 'جبکہ', 'جب', 'کہاں', 'کس طرح', 'اگر', 'کہ', 'سے پہلے', 'کے بعد', 'جیسے ہی', 'تک', 'اگر نہیں تو', 'کے باوجود', 'اس لئے', 'جیسے', 'نہ'},
+    'hi': {'और', 'या', 'पर', 'तो', 'न', 'फिर', 'हालांकि', 'चूंकि', 'अगर', 'कैसे', 'वह', 'से', 'जो', 'जहां', 'क्या', 'नजदीक', 'पहले', 'बाद', 'के', 'पार', 'माध्यम', 'तक', 'एक', 'जबकि', 'यहां', 'तक', 'दोनों', 'या', 'न', 'हालांकि'}
+
+}
+
+commas_by_language = {
+    'ja': '、', 
+    'zh': '，',
+    'fa': '،', 
+    'ur': '،'  
+}
+
+def get_conjunctions(lang_code: str) -> Set[str]:
+    return conjunctions_by_language.get(lang_code, set())
+
+
+def get_comma(lang_code: str) -> str:
+    return commas_by_language.get(lang_code, ",")
+
+
+================================================
+File: whisperx/diarize.py
+================================================
+import numpy as np
+import pandas as pd
+from pyannote.audio import Pipeline
+from typing import Optional, Union
+import torch
+
+from .audio import load_audio, SAMPLE_RATE
+from .types import TranscriptionResult, AlignedTranscriptionResult
+
+
+class DiarizationPipeline:
+    def __init__(
+        self,
+        model_name="pyannote/speaker-diarization-3.1",
+        use_auth_token=None,
+        device: Optional[Union[str, torch.device]] = "cpu",
+    ):
+        if isinstance(device, str):
+            device = torch.device(device)
+        self.model = Pipeline.from_pretrained(model_name, use_auth_token=use_auth_token).to(device)
+
+    def __call__(
+        self,
+        audio: Union[str, np.ndarray],
+        num_speakers: Optional[int] = None,
+        min_speakers: Optional[int] = None,
+        max_speakers: Optional[int] = None,
+    ):
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+        audio_data = {
+            'waveform': torch.from_numpy(audio[None, :]),
+            'sample_rate': SAMPLE_RATE
+        }
+        segments = self.model(audio_data, num_speakers = num_speakers, min_speakers=min_speakers, max_speakers=max_speakers)
+        diarize_df = pd.DataFrame(segments.itertracks(yield_label=True), columns=['segment', 'label', 'speaker'])
+        diarize_df['start'] = diarize_df['segment'].apply(lambda x: x.start)
+        diarize_df['end'] = diarize_df['segment'].apply(lambda x: x.end)
+        return diarize_df
+
+
+def assign_word_speakers(
+    diarize_df: pd.DataFrame,
+    transcript_result: Union[AlignedTranscriptionResult, TranscriptionResult],
+    fill_nearest=False,
+) -> dict:
+    transcript_segments = transcript_result["segments"]
+    for seg in transcript_segments:
+        # assign speaker to segment (if any)
+        diarize_df['intersection'] = np.minimum(diarize_df['end'], seg['end']) - np.maximum(diarize_df['start'], seg['start'])
+        diarize_df['union'] = np.maximum(diarize_df['end'], seg['end']) - np.minimum(diarize_df['start'], seg['start'])
+        # remove no hit, otherwise we look for closest (even negative intersection...)
+        if not fill_nearest:
+            dia_tmp = diarize_df[diarize_df['intersection'] > 0]
+        else:
+            dia_tmp = diarize_df
+        if len(dia_tmp) > 0:
+            # sum over speakers
+            speaker = dia_tmp.groupby("speaker")["intersection"].sum().sort_values(ascending=False).index[0]
+            seg["speaker"] = speaker
+        
+        # assign speaker to words
+        if 'words' in seg:
+            for word in seg['words']:
+                if 'start' in word:
+                    diarize_df['intersection'] = np.minimum(diarize_df['end'], word['end']) - np.maximum(diarize_df['start'], word['start'])
+                    diarize_df['union'] = np.maximum(diarize_df['end'], word['end']) - np.minimum(diarize_df['start'], word['start'])
+                    # remove no hit
+                    if not fill_nearest:
+                        dia_tmp = diarize_df[diarize_df['intersection'] > 0]
+                    else:
+                        dia_tmp = diarize_df
+                    if len(dia_tmp) > 0:
+                        # sum over speakers
+                        speaker = dia_tmp.groupby("speaker")["intersection"].sum().sort_values(ascending=False).index[0]
+                        word["speaker"] = speaker
+        
+    return transcript_result            
+
+
+class Segment:
+    def __init__(self, start:int, end:int, speaker:Optional[str]=None):
+        self.start = start
+        self.end = end
+        self.speaker = speaker
+
+
+================================================
+File: whisperx/transcribe.py
+================================================
+import argparse
+import gc
+import os
+import warnings
+
+import numpy as np
+import torch
+
+from .alignment import align, load_align_model
+from .asr import load_model
+from .audio import load_audio
+from .diarize import DiarizationPipeline, assign_word_speakers
+from .types import AlignedTranscriptionResult, TranscriptionResult
+from .utils import (
+    LANGUAGES,
+    TO_LANGUAGE_CODE,
+    get_writer,
+    optional_float,
+    optional_int,
+    str2bool,
+)
+
+
+def cli():
+    # fmt: off
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("audio", nargs="+", type=str, help="audio file(s) to transcribe")
+    parser.add_argument("--model", default="small", help="name of the Whisper model to use")
+    parser.add_argument("--model_cache_only", type=str2bool, default=False, help="If True, will not attempt to download models, instead using cached models from --model_dir")
+    parser.add_argument("--model_dir", type=str, default=None, help="the path to save model files; uses ~/.cache/whisper by default")
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", help="device to use for PyTorch inference")
+    parser.add_argument("--device_index", default=0, type=int, help="device index to use for FasterWhisper inference")
+    parser.add_argument("--batch_size", default=8, type=int, help="the preferred batch size for inference")
+    parser.add_argument("--compute_type", default="float16", type=str, choices=["float16", "float32", "int8"], help="compute type for computation")
+
+    parser.add_argument("--output_dir", "-o", type=str, default=".", help="directory to save the outputs")
+    parser.add_argument("--output_format", "-f", type=str, default="all", choices=["all", "srt", "vtt", "txt", "tsv", "json", "aud"], help="format of the output file; if not specified, all available formats will be produced")
+    parser.add_argument("--verbose", type=str2bool, default=True, help="whether to print out the progress and debug messages")
+
+    parser.add_argument("--task", type=str, default="transcribe", choices=["transcribe", "translate"], help="whether to perform X->X speech recognition ('transcribe') or X->English translation ('translate')")
+    parser.add_argument("--language", type=str, default=None, choices=sorted(LANGUAGES.keys()) + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]), help="language spoken in the audio, specify None to perform language detection")
+
+    # alignment params
+    parser.add_argument("--align_model", default=None, help="Name of phoneme-level ASR model to do alignment")
+    parser.add_argument("--interpolate_method", default="nearest", choices=["nearest", "linear", "ignore"], help="For word .srt, method to assign timestamps to non-aligned words, or merge them into neighbouring.")
+    parser.add_argument("--no_align", action='store_true', help="Do not perform phoneme alignment")
+    parser.add_argument("--return_char_alignments", action='store_true', help="Return character-level alignments in the output json file")
+
+    # vad params
+    parser.add_argument("--vad_method", type=str, default="pyannote", choices=["pyannote", "silero"], help="VAD method to be used")
+    parser.add_argument("--vad_onset", type=float, default=0.500, help="Onset threshold for VAD (see pyannote.audio), reduce this if speech is not being detected")
+    parser.add_argument("--vad_offset", type=float, default=0.363, help="Offset threshold for VAD (see pyannote.audio), reduce this if speech is not being detected.")
+    parser.add_argument("--chunk_size", type=int, default=30, help="Chunk size for merging VAD segments. Default is 30, reduce this if the chunk is too long.")
+
+    # diarization params
+    parser.add_argument("--diarize", action="store_true", help="Apply diarization to assign speaker labels to each segment/word")
+    parser.add_argument("--min_speakers", default=None, type=int, help="Minimum number of speakers to in audio file")
+    parser.add_argument("--max_speakers", default=None, type=int, help="Maximum number of speakers to in audio file")
+
+    parser.add_argument("--temperature", type=float, default=0, help="temperature to use for sampling")
+    parser.add_argument("--best_of", type=optional_int, default=5, help="number of candidates when sampling with non-zero temperature")
+    parser.add_argument("--beam_size", type=optional_int, default=5, help="number of beams in beam search, only applicable when temperature is zero")
+    parser.add_argument("--patience", type=float, default=1.0, help="optional patience value to use in beam decoding, as in https://arxiv.org/abs/2204.05424, the default (1.0) is equivalent to conventional beam search")
+    parser.add_argument("--length_penalty", type=float, default=1.0, help="optional token length penalty coefficient (alpha) as in https://arxiv.org/abs/1609.08144, uses simple length normalization by default")
+
+    parser.add_argument("--suppress_tokens", type=str, default="-1", help="comma-separated list of token ids to suppress during sampling; '-1' will suppress most special characters except common punctuations")
+    parser.add_argument("--suppress_numerals", action="store_true", help="whether to suppress numeric symbols and currency symbols during sampling, since wav2vec2 cannot align them correctly")
+
+    parser.add_argument("--initial_prompt", type=str, default=None, help="optional text to provide as a prompt for the first window.")
+    parser.add_argument("--condition_on_previous_text", type=str2bool, default=False, help="if True, provide the previous output of the model as a prompt for the next window; disabling may make the text inconsistent across windows, but the model becomes less prone to getting stuck in a failure loop")
+    parser.add_argument("--fp16", type=str2bool, default=True, help="whether to perform inference in fp16; True by default")
+
+    parser.add_argument("--temperature_increment_on_fallback", type=optional_float, default=0.2, help="temperature to increase when falling back when the decoding fails to meet either of the thresholds below")
+    parser.add_argument("--compression_ratio_threshold", type=optional_float, default=2.4, help="if the gzip compression ratio is higher than this value, treat the decoding as failed")
+    parser.add_argument("--logprob_threshold", type=optional_float, default=-1.0, help="if the average log probability is lower than this value, treat the decoding as failed")
+    parser.add_argument("--no_speech_threshold", type=optional_float, default=0.6, help="if the probability of the <|nospeech|> token is higher than this value AND the decoding has failed due to `logprob_threshold`, consider the segment as silence")
+
+    parser.add_argument("--max_line_width", type=optional_int, default=None, help="(not possible with --no_align) the maximum number of characters in a line before breaking the line")
+    parser.add_argument("--max_line_count", type=optional_int, default=None, help="(not possible with --no_align) the maximum number of lines in a segment")
+    parser.add_argument("--highlight_words", type=str2bool, default=False, help="(not possible with --no_align) underline each word as it is spoken in srt and vtt")
+    parser.add_argument("--segment_resolution", type=str, default="sentence", choices=["sentence", "chunk"], help="(not possible with --no_align) the maximum number of characters in a line before breaking the line")
+
+    parser.add_argument("--threads", type=optional_int, default=0, help="number of threads used by torch for CPU inference; supercedes MKL_NUM_THREADS/OMP_NUM_THREADS")
+
+    parser.add_argument("--hf_token", type=str, default=None, help="Hugging Face Access Token to access PyAnnote gated models")
+
+    parser.add_argument("--print_progress", type=str2bool, default = False, help = "if True, progress will be printed in transcribe() and align() methods.")
+    # fmt: on
+
+    args = parser.parse_args().__dict__
+    model_name: str = args.pop("model")
+    batch_size: int = args.pop("batch_size")
+    model_dir: str = args.pop("model_dir")
+    model_cache_only: bool = args.pop("model_cache_only")
+    output_dir: str = args.pop("output_dir")
+    output_format: str = args.pop("output_format")
+    device: str = args.pop("device")
+    device_index: int = args.pop("device_index")
+    compute_type: str = args.pop("compute_type")
+    verbose: bool = args.pop("verbose")
+
+    # model_flush: bool = args.pop("model_flush")
+    os.makedirs(output_dir, exist_ok=True)
+
+    align_model: str = args.pop("align_model")
+    interpolate_method: str = args.pop("interpolate_method")
+    no_align: bool = args.pop("no_align")
+    task: str = args.pop("task")
+    if task == "translate":
+        # translation cannot be aligned
+        no_align = True
+
+    return_char_alignments: bool = args.pop("return_char_alignments")
+
+    hf_token: str = args.pop("hf_token")
+    vad_method: str = args.pop("vad_method")
+    vad_onset: float = args.pop("vad_onset")
+    vad_offset: float = args.pop("vad_offset")
+
+    chunk_size: int = args.pop("chunk_size")
+
+    diarize: bool = args.pop("diarize")
+    min_speakers: int = args.pop("min_speakers")
+    max_speakers: int = args.pop("max_speakers")
+    print_progress: bool = args.pop("print_progress")
+
+    if args["language"] is not None:
+        args["language"] = args["language"].lower()
+        if args["language"] not in LANGUAGES:
+            if args["language"] in TO_LANGUAGE_CODE:
+                args["language"] = TO_LANGUAGE_CODE[args["language"]]
+            else:
+                raise ValueError(f"Unsupported language: {args['language']}")
+
+    if model_name.endswith(".en") and args["language"] != "en":
+        if args["language"] is not None:
+            warnings.warn(
+                f"{model_name} is an English-only model but received '{args['language']}'; using English instead."
+            )
+        args["language"] = "en"
+    align_language = args["language"] if args["language"] is not None else "en" # default to loading english if not specified
+
+    temperature = args.pop("temperature")
+    if (increment := args.pop("temperature_increment_on_fallback")) is not None:
+        temperature = tuple(np.arange(temperature, 1.0 + 1e-6, increment))
+    else:
+        temperature = [temperature]
+
+    faster_whisper_threads = 4
+    if (threads := args.pop("threads")) > 0:
+        torch.set_num_threads(threads)
+        faster_whisper_threads = threads
+
+    asr_options = {
+        "beam_size": args.pop("beam_size"),
+        "patience": args.pop("patience"),
+        "length_penalty": args.pop("length_penalty"),
+        "temperatures": temperature,
+        "compression_ratio_threshold": args.pop("compression_ratio_threshold"),
+        "log_prob_threshold": args.pop("logprob_threshold"),
+        "no_speech_threshold": args.pop("no_speech_threshold"),
+        "condition_on_previous_text": False,
+        "initial_prompt": args.pop("initial_prompt"),
+        "suppress_tokens": [int(x) for x in args.pop("suppress_tokens").split(",")],
+        "suppress_numerals": args.pop("suppress_numerals"),
+    }
+
+    writer = get_writer(output_format, output_dir)
+    word_options = ["highlight_words", "max_line_count", "max_line_width"]
+    if no_align:
+        for option in word_options:
+            if args[option]:
+                parser.error(f"--{option} not possible with --no_align")
+    if args["max_line_count"] and not args["max_line_width"]:
+        warnings.warn("--max_line_count has no effect without --max_line_width")
+    writer_args = {arg: args.pop(arg) for arg in word_options}
+    
+    # Part 1: VAD & ASR Loop
+    results = []
+    tmp_results = []
+    # model = load_model(model_name, device=device, download_root=model_dir)
+    model = load_model(model_name, device=device, device_index=device_index, download_root=model_dir, compute_type=compute_type, language=args['language'], asr_options=asr_options, vad_method=vad_method, vad_options={"chunk_size":chunk_size, "vad_onset": vad_onset, "vad_offset": vad_offset}, task=task, local_files_only=model_cache_only, threads=faster_whisper_threads)
+
+    for audio_path in args.pop("audio"):
+        audio = load_audio(audio_path)
+        # >> VAD & ASR
+        print(">>Performing transcription...")
+        result: TranscriptionResult = model.transcribe(
+            audio,
+            batch_size=batch_size,
+            chunk_size=chunk_size,
+            print_progress=print_progress,
+            verbose=verbose,
+        )
+        results.append((result, audio_path))
+
+    # Unload Whisper and VAD
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # Part 2: Align Loop
+    if not no_align:
+        tmp_results = results
+        results = []
+        align_model, align_metadata = load_align_model(align_language, device, model_name=align_model)
+        for result, audio_path in tmp_results:
+            # >> Align
+            if len(tmp_results) > 1:
+                input_audio = audio_path
+            else:
+                # lazily load audio from part 1
+                input_audio = audio
+
+            if align_model is not None and len(result["segments"]) > 0:
+                if result.get("language", "en") != align_metadata["language"]:
+                    # load new language
+                    print(f"New language found ({result['language']})! Previous was ({align_metadata['language']}), loading new alignment model for new language...")
+                    align_model, align_metadata = load_align_model(result["language"], device)
+                print(">>Performing alignment...")
+                result: AlignedTranscriptionResult = align(
+                    result["segments"],
+                    align_model,
+                    align_metadata,
+                    input_audio,
+                    device,
+                    interpolate_method=interpolate_method,
+                    return_char_alignments=return_char_alignments,
+                    print_progress=print_progress,
+                )
+
+            results.append((result, audio_path))
+
+        # Unload align model
+        del align_model
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    # >> Diarize
+    if diarize:
+        if hf_token is None:
+            print("Warning, no --hf_token used, needs to be saved in environment variable, otherwise will throw error loading diarization model...")
+        tmp_results = results
+        print(">>Performing diarization...")
+        results = []
+        diarize_model = DiarizationPipeline(use_auth_token=hf_token, device=device)
+        for result, input_audio_path in tmp_results:
+            diarize_segments = diarize_model(input_audio_path, min_speakers=min_speakers, max_speakers=max_speakers)
+            result = assign_word_speakers(diarize_segments, result)
+            results.append((result, input_audio_path))
+    # >> Write
+    for result, audio_path in results:
+        result["language"] = align_language
+        writer(result, audio_path, writer_args)
+
+if __name__ == "__main__":
+    cli()
+
+
+================================================
+File: whisperx/types.py
+================================================
+from typing import TypedDict, Optional, List, Tuple
+
+
+class SingleWordSegment(TypedDict):
+    """
+    A single word of a speech.
+    """
+    word: str
+    start: float
+    end: float
+    score: float
+
+class SingleCharSegment(TypedDict):
+    """
+    A single char of a speech.
+    """
+    char: str
+    start: float
+    end: float
+    score: float
+
+
+class SingleSegment(TypedDict):
+    """
+    A single segment (up to multiple sentences) of a speech.
+    """
+
+    start: float
+    end: float
+    text: str
+
+
+class SegmentData(TypedDict):
+    """
+    Temporary processing data used during alignment.
+    Contains cleaned and preprocessed data for each segment.
+    """
+    clean_char: List[str]  # Cleaned characters that exist in model dictionary
+    clean_cdx: List[int]   # Original indices of cleaned characters
+    clean_wdx: List[int]   # Indices of words containing valid characters
+    sentence_spans: List[Tuple[int, int]]  # Start and end indices of sentences
+
+
+class SingleAlignedSegment(TypedDict):
+    """
+    A single segment (up to multiple sentences) of a speech with word alignment.
+    """
+
+    start: float
+    end: float
+    text: str
+    words: List[SingleWordSegment]
+    chars: Optional[List[SingleCharSegment]]
+
+
+class TranscriptionResult(TypedDict):
+    """
+    A list of segments and word segments of a speech.
+    """
+    segments: List[SingleSegment]
+    language: str
+
+
+class AlignedTranscriptionResult(TypedDict):
+    """
+    A list of segments and word segments of a speech.
+    """
+    segments: List[SingleAlignedSegment]
+    word_segments: List[SingleWordSegment]
+
+
+================================================
+File: whisperx/utils.py
+================================================
+import json
+import os
+import re
+import sys
+import zlib
+from typing import Callable, Optional, TextIO
+
+LANGUAGES = {
+    "en": "english",
+    "zh": "chinese",
+    "de": "german",
+    "es": "spanish",
+    "ru": "russian",
+    "ko": "korean",
+    "fr": "french",
+    "ja": "japanese",
+    "pt": "portuguese",
+    "tr": "turkish",
+    "pl": "polish",
+    "ca": "catalan",
+    "nl": "dutch",
+    "ar": "arabic",
+    "sv": "swedish",
+    "it": "italian",
+    "id": "indonesian",
+    "hi": "hindi",
+    "fi": "finnish",
+    "vi": "vietnamese",
+    "he": "hebrew",
+    "uk": "ukrainian",
+    "el": "greek",
+    "ms": "malay",
+    "cs": "czech",
+    "ro": "romanian",
+    "da": "danish",
+    "hu": "hungarian",
+    "ta": "tamil",
+    "no": "norwegian",
+    "th": "thai",
+    "ur": "urdu",
+    "hr": "croatian",
+    "bg": "bulgarian",
+    "lt": "lithuanian",
+    "la": "latin",
+    "mi": "maori",
+    "ml": "malayalam",
+    "cy": "welsh",
+    "sk": "slovak",
+    "te": "telugu",
+    "fa": "persian",
+    "lv": "latvian",
+    "bn": "bengali",
+    "sr": "serbian",
+    "az": "azerbaijani",
+    "sl": "slovenian",
+    "kn": "kannada",
+    "et": "estonian",
+    "mk": "macedonian",
+    "br": "breton",
+    "eu": "basque",
+    "is": "icelandic",
+    "hy": "armenian",
+    "ne": "nepali",
+    "mn": "mongolian",
+    "bs": "bosnian",
+    "kk": "kazakh",
+    "sq": "albanian",
+    "sw": "swahili",
+    "gl": "galician",
+    "mr": "marathi",
+    "pa": "punjabi",
+    "si": "sinhala",
+    "km": "khmer",
+    "sn": "shona",
+    "yo": "yoruba",
+    "so": "somali",
+    "af": "afrikaans",
+    "oc": "occitan",
+    "ka": "georgian",
+    "be": "belarusian",
+    "tg": "tajik",
+    "sd": "sindhi",
+    "gu": "gujarati",
+    "am": "amharic",
+    "yi": "yiddish",
+    "lo": "lao",
+    "uz": "uzbek",
+    "fo": "faroese",
+    "ht": "haitian creole",
+    "ps": "pashto",
+    "tk": "turkmen",
+    "nn": "nynorsk",
+    "mt": "maltese",
+    "sa": "sanskrit",
+    "lb": "luxembourgish",
+    "my": "myanmar",
+    "bo": "tibetan",
+    "tl": "tagalog",
+    "mg": "malagasy",
+    "as": "assamese",
+    "tt": "tatar",
+    "haw": "hawaiian",
+    "ln": "lingala",
+    "ha": "hausa",
+    "ba": "bashkir",
+    "jw": "javanese",
+    "su": "sundanese",
+    "yue": "cantonese",
+    "lv": "latvian",
+}
+
+# language code lookup by name, with a few language aliases
+TO_LANGUAGE_CODE = {
+    **{language: code for code, language in LANGUAGES.items()},
+    "burmese": "my",
+    "valencian": "ca",
+    "flemish": "nl",
+    "haitian": "ht",
+    "letzeburgesch": "lb",
+    "pushto": "ps",
+    "panjabi": "pa",
+    "moldavian": "ro",
+    "moldovan": "ro",
+    "sinhalese": "si",
+    "castilian": "es",
+}
+
+LANGUAGES_WITHOUT_SPACES = ["ja", "zh"]
+
+system_encoding = sys.getdefaultencoding()
+
+if system_encoding != "utf-8":
+
+    def make_safe(string):
+        # replaces any character not representable using the system default encoding with an '?',
+        # avoiding UnicodeEncodeError (https://github.com/openai/whisper/discussions/729).
+        return string.encode(system_encoding, errors="replace").decode(system_encoding)
+
+else:
+
+    def make_safe(string):
+        # utf-8 can encode any Unicode code point, so no need to do the round-trip encoding
+        return string
+
+
+def exact_div(x, y):
+    assert x % y == 0
+    return x // y
+
+
+def str2bool(string):
+    str2val = {"True": True, "False": False}
+    if string in str2val:
+        return str2val[string]
+    else:
+        raise ValueError(f"Expected one of {set(str2val.keys())}, got {string}")
+
+
+def optional_int(string):
+    return None if string == "None" else int(string)
+
+
+def optional_float(string):
+    return None if string == "None" else float(string)
+
+
+def compression_ratio(text) -> float:
+    text_bytes = text.encode("utf-8")
+    return len(text_bytes) / len(zlib.compress(text_bytes))
+
+
+def format_timestamp(
+    seconds: float, always_include_hours: bool = False, decimal_marker: str = "."
+):
+    assert seconds >= 0, "non-negative timestamp expected"
+    milliseconds = round(seconds * 1000.0)
+
+    hours = milliseconds // 3_600_000
+    milliseconds -= hours * 3_600_000
+
+    minutes = milliseconds // 60_000
+    milliseconds -= minutes * 60_000
+
+    seconds = milliseconds // 1_000
+    milliseconds -= seconds * 1_000
+
+    hours_marker = f"{hours:02d}:" if always_include_hours or hours > 0 else ""
+    return (
+        f"{hours_marker}{minutes:02d}:{seconds:02d}{decimal_marker}{milliseconds:03d}"
+    )
+
+
+class ResultWriter:
+    extension: str
+
+    def __init__(self, output_dir: str):
+        self.output_dir = output_dir
+
+    def __call__(self, result: dict, audio_path: str, options: dict):
+        audio_basename = os.path.basename(audio_path)
+        audio_basename = os.path.splitext(audio_basename)[0]
+        output_path = os.path.join(
+            self.output_dir, audio_basename + "." + self.extension
+        )
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            self.write_result(result, file=f, options=options)
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        raise NotImplementedError
+
+
+class WriteTXT(ResultWriter):
+    extension: str = "txt"
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        for segment in result["segments"]:
+            speaker = segment.get("speaker")
+            text = segment["text"].strip()
+            if speaker is not None:
+                print(f"[{speaker}]: {text}", file=file, flush=True)
+            else:
+                print(text, file=file, flush=True)
+
+
+class SubtitlesWriter(ResultWriter):
+    always_include_hours: bool
+    decimal_marker: str
+
+    def iterate_result(self, result: dict, options: dict):
+        raw_max_line_width: Optional[int] = options["max_line_width"]
+        max_line_count: Optional[int] = options["max_line_count"]
+        highlight_words: bool = options["highlight_words"]
+        max_line_width = 1000 if raw_max_line_width is None else raw_max_line_width
+        preserve_segments = max_line_count is None or raw_max_line_width is None
+
+        if len(result["segments"]) == 0:
+            return
+
+        def iterate_subtitles():
+            line_len = 0
+            line_count = 1
+            # the next subtitle to yield (a list of word timings with whitespace)
+            subtitle: list[dict] = []
+            times: list[tuple] = []
+            last = result["segments"][0]["start"]
+            for segment in result["segments"]:
+                for i, original_timing in enumerate(segment["words"]):
+                    timing = original_timing.copy()
+                    long_pause = not preserve_segments
+                    if "start" in timing:
+                        long_pause = long_pause and timing["start"] - last > 3.0
+                    else:
+                        long_pause = False
+                    has_room = line_len + len(timing["word"]) <= max_line_width
+                    seg_break = i == 0 and len(subtitle) > 0 and preserve_segments
+                    if line_len > 0 and has_room and not long_pause and not seg_break:
+                        # line continuation
+                        line_len += len(timing["word"])
+                    else:
+                        # new line
+                        timing["word"] = timing["word"].strip()
+                        if (
+                            len(subtitle) > 0
+                            and max_line_count is not None
+                            and (long_pause or line_count >= max_line_count)
+                            or seg_break
+                        ):
+                            # subtitle break
+                            yield subtitle, times
+                            subtitle = []
+                            times = []
+                            line_count = 1
+                        elif line_len > 0:
+                            # line break
+                            line_count += 1
+                            timing["word"] = "\n" + timing["word"]
+                        line_len = len(timing["word"].strip())
+                    subtitle.append(timing)
+                    times.append((segment["start"], segment["end"], segment.get("speaker")))
+                    if "start" in timing:
+                        last = timing["start"]
+            if len(subtitle) > 0:
+                yield subtitle, times
+
+        if "words" in result["segments"][0]:
+            for subtitle, _ in iterate_subtitles():
+                sstart, ssend, speaker = _[0]
+                subtitle_start = self.format_timestamp(sstart)
+                subtitle_end = self.format_timestamp(ssend)
+                if result["language"] in LANGUAGES_WITHOUT_SPACES:
+                    subtitle_text = "".join([word["word"] for word in subtitle])
+                else:
+                    subtitle_text = " ".join([word["word"] for word in subtitle])
+                has_timing = any(["start" in word for word in subtitle])
+
+                # add [$SPEAKER_ID]: to each subtitle if speaker is available
+                prefix = ""
+                if speaker is not None:
+                    prefix = f"[{speaker}]: "
+
+                if highlight_words and has_timing:
+                    last = subtitle_start
+                    all_words = [timing["word"] for timing in subtitle]
+                    for i, this_word in enumerate(subtitle):
+                        if "start" in this_word:
+                            start = self.format_timestamp(this_word["start"])
+                            end = self.format_timestamp(this_word["end"])
+                            if last != start:
+                                yield last, start, prefix + subtitle_text
+
+                            yield start, end, prefix + " ".join(
+                                [
+                                    re.sub(r"^(\s*)(.*)$", r"\1<u>\2</u>", word)
+                                    if j == i
+                                    else word
+                                    for j, word in enumerate(all_words)
+                                ]
+                            )
+                            last = end
+                else:
+                    yield subtitle_start, subtitle_end, prefix + subtitle_text
+        else:
+            for segment in result["segments"]:
+                segment_start = self.format_timestamp(segment["start"])
+                segment_end = self.format_timestamp(segment["end"])
+                segment_text = segment["text"].strip().replace("-->", "->")
+                if "speaker" in segment:
+                    segment_text = f"[{segment['speaker']}]: {segment_text}"
+                yield segment_start, segment_end, segment_text
+
+    def format_timestamp(self, seconds: float):
+        return format_timestamp(
+            seconds=seconds,
+            always_include_hours=self.always_include_hours,
+            decimal_marker=self.decimal_marker,
+        )
+
+
+class WriteVTT(SubtitlesWriter):
+    extension: str = "vtt"
+    always_include_hours: bool = False
+    decimal_marker: str = "."
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        print("WEBVTT\n", file=file)
+        for start, end, text in self.iterate_result(result, options):
+            print(f"{start} --> {end}\n{text}\n", file=file, flush=True)
+
+
+class WriteSRT(SubtitlesWriter):
+    extension: str = "srt"
+    always_include_hours: bool = True
+    decimal_marker: str = ","
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        for i, (start, end, text) in enumerate(
+            self.iterate_result(result, options), start=1
+        ):
+            print(f"{i}\n{start} --> {end}\n{text}\n", file=file, flush=True)
+
+
+class WriteTSV(ResultWriter):
+    """
+    Write a transcript to a file in TSV (tab-separated values) format containing lines like:
+    <start time in integer milliseconds>\t<end time in integer milliseconds>\t<transcript text>
+
+    Using integer milliseconds as start and end times means there's no chance of interference from
+    an environment setting a language encoding that causes the decimal in a floating point number
+    to appear as a comma; also is faster and more efficient to parse & store, e.g., in C++.
+    """
+
+    extension: str = "tsv"
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        print("start", "end", "text", sep="\t", file=file)
+        for segment in result["segments"]:
+            print(round(1000 * segment["start"]), file=file, end="\t")
+            print(round(1000 * segment["end"]), file=file, end="\t")
+            print(segment["text"].strip().replace("\t", " "), file=file, flush=True)
+
+class WriteAudacity(ResultWriter):
+    """
+    Write a transcript to a text file that audacity can import as labels.
+    The extension used is "aud" to distinguish it from the txt file produced by WriteTXT.
+    Yet this is not an audacity project but only a label file!
+    
+    Please note : Audacity uses seconds in timestamps not ms! 
+    Also there is no header expected.
+
+    If speaker is provided it is prepended to the text between double square brackets [[]].
+    """
+
+    extension: str = "aud"    
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        ARROW = "	"
+        for segment in result["segments"]:
+            print(segment["start"], file=file, end=ARROW)
+            print(segment["end"], file=file, end=ARROW)
+            print( ( ("[[" + segment["speaker"] + "]]") if "speaker" in segment else "") + segment["text"].strip().replace("\t", " "), file=file, flush=True)
+
+            
+
+class WriteJSON(ResultWriter):
+    extension: str = "json"
+
+    def write_result(self, result: dict, file: TextIO, options: dict):
+        json.dump(result, file, ensure_ascii=False)
+
+
+def get_writer(
+    output_format: str, output_dir: str
+) -> Callable[[dict, TextIO, dict], None]:
+    writers = {
+        "txt": WriteTXT,
+        "vtt": WriteVTT,
+        "srt": WriteSRT,
+        "tsv": WriteTSV,
+        "json": WriteJSON,
+    }
+    optional_writers = {
+        "aud": WriteAudacity,
+    }
+
+    if output_format == "all":
+        all_writers = [writer(output_dir) for writer in writers.values()]
+
+        def write_all(result: dict, file: TextIO, options: dict):
+            for writer in all_writers:
+                writer(result, file, options)
+
+        return write_all
+
+    if output_format in optional_writers:
+        return optional_writers[output_format](output_dir)
+    return writers[output_format](output_dir)
+
+def interpolate_nans(x, method='nearest'):
+    if x.notnull().sum() > 1:
+        return x.interpolate(method=method).ffill().bfill()
+    else:
+        return x.ffill().bfill()
+
+
+================================================
+File: whisperx/vads/__init__.py
+================================================
+from whisperx.vads.pyannote import Pyannote
+from whisperx.vads.silero import Silero
+from whisperx.vads.vad import Vad
+
+================================================
+File: whisperx/vads/pyannote.py
+================================================
+import hashlib
+import os
+import urllib
+from typing import Callable, Text, Union
+from typing import Optional
+
+import numpy as np
+import torch
+from pyannote.audio import Model
+from pyannote.audio.core.io import AudioFile
+from pyannote.audio.pipelines import VoiceActivityDetection
+from pyannote.audio.pipelines.utils import PipelineModel
+from pyannote.core import Annotation, SlidingWindowFeature
+from pyannote.core import Segment
+from tqdm import tqdm
+
+from whisperx.diarize import Segment as SegmentX
+from whisperx.vads.vad import Vad
+
+def load_vad_model(device, vad_onset=0.500, vad_offset=0.363, use_auth_token=None, model_fp=None):
+    model_dir = torch.hub._get_torch_home()
+
+    main_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    os.makedirs(model_dir, exist_ok = True)
+    if model_fp is None:
+        # Dynamically resolve the path to the model file
+        model_fp = os.path.join(main_dir, "assets", "pytorch_model.bin")
+        model_fp = os.path.abspath(model_fp)  # Ensure the path is absolute
+    else:
+        model_fp = os.path.abspath(model_fp)  # Ensure any provided path is absolute
+
+    # Check if the resolved model file exists
+    if not os.path.exists(model_fp):
+        raise FileNotFoundError(f"Model file not found at {model_fp}")
+
+    if os.path.exists(model_fp) and not os.path.isfile(model_fp):
+        raise RuntimeError(f"{model_fp} exists and is not a regular file")
+
+    model_bytes = open(model_fp, "rb").read()
+
+    vad_model = Model.from_pretrained(model_fp, use_auth_token=use_auth_token)
+    hyperparameters = {"onset": vad_onset,
+                    "offset": vad_offset,
+                    "min_duration_on": 0.1,
+                    "min_duration_off": 0.1}
+    vad_pipeline = VoiceActivitySegmentation(segmentation=vad_model, device=torch.device(device))
+    vad_pipeline.instantiate(hyperparameters)
+
+    return vad_pipeline
+
+class Binarize:
+    """Binarize detection scores using hysteresis thresholding, with min-cut operation
+    to ensure not segments are longer than max_duration.
+
+    Parameters
+    ----------
+    onset : float, optional
+        Onset threshold. Defaults to 0.5.
+    offset : float, optional
+        Offset threshold. Defaults to `onset`.
+    min_duration_on : float, optional
+        Remove active regions shorter than that many seconds. Defaults to 0s.
+    min_duration_off : float, optional
+        Fill inactive regions shorter than that many seconds. Defaults to 0s.
+    pad_onset : float, optional
+        Extend active regions by moving their start time by that many seconds.
+        Defaults to 0s.
+    pad_offset : float, optional
+        Extend active regions by moving their end time by that many seconds.
+        Defaults to 0s.
+    max_duration: float
+        The maximum length of an active segment, divides segment at timestamp with lowest score.
+    Reference
+    ---------
+    Gregory Gelly and Jean-Luc Gauvain. "Minimum Word Error Training of
+    RNN-based Voice Activity Detection", InterSpeech 2015.
+
+    Modified by Max Bain to include WhisperX's min-cut operation
+    https://arxiv.org/abs/2303.00747
+
+    Pyannote-audio
+    """
+
+    def __init__(
+            self,
+            onset: float = 0.5,
+            offset: Optional[float] = None,
+            min_duration_on: float = 0.0,
+            min_duration_off: float = 0.0,
+            pad_onset: float = 0.0,
+            pad_offset: float = 0.0,
+            max_duration: float = float('inf')
+    ):
+
+        super().__init__()
+
+        self.onset = onset
+        self.offset = offset or onset
+
+        self.pad_onset = pad_onset
+        self.pad_offset = pad_offset
+
+        self.min_duration_on = min_duration_on
+        self.min_duration_off = min_duration_off
+
+        self.max_duration = max_duration
+
+    def __call__(self, scores: SlidingWindowFeature) -> Annotation:
+        """Binarize detection scores
+        Parameters
+        ----------
+        scores : SlidingWindowFeature
+            Detection scores.
+        Returns
+        -------
+        active : Annotation
+            Binarized scores.
+        """
+
+        num_frames, num_classes = scores.data.shape
+        frames = scores.sliding_window
+        timestamps = [frames[i].middle for i in range(num_frames)]
+
+        # annotation meant to store 'active' regions
+        active = Annotation()
+        for k, k_scores in enumerate(scores.data.T):
+
+            label = k if scores.labels is None else scores.labels[k]
+
+            # initial state
+            start = timestamps[0]
+            is_active = k_scores[0] > self.onset
+            curr_scores = [k_scores[0]]
+            curr_timestamps = [start]
+            t = start
+            for t, y in zip(timestamps[1:], k_scores[1:]):
+                # currently active
+                if is_active:
+                    curr_duration = t - start
+                    if curr_duration > self.max_duration:
+                        search_after = len(curr_scores) // 2
+                        # divide segment
+                        min_score_div_idx = search_after + np.argmin(curr_scores[search_after:])
+                        min_score_t = curr_timestamps[min_score_div_idx]
+                        region = Segment(start - self.pad_onset, min_score_t + self.pad_offset)
+                        active[region, k] = label
+                        start = curr_timestamps[min_score_div_idx]
+                        curr_scores = curr_scores[min_score_div_idx + 1:]
+                        curr_timestamps = curr_timestamps[min_score_div_idx + 1:]
+                    # switching from active to inactive
+                    elif y < self.offset:
+                        region = Segment(start - self.pad_onset, t + self.pad_offset)
+                        active[region, k] = label
+                        start = t
+                        is_active = False
+                        curr_scores = []
+                        curr_timestamps = []
+                    curr_scores.append(y)
+                    curr_timestamps.append(t)
+                # currently inactive
+                else:
+                    # switching from inactive to active
+                    if y > self.onset:
+                        start = t
+                        is_active = True
+
+            # if active at the end, add final region
+            if is_active:
+                region = Segment(start - self.pad_onset, t + self.pad_offset)
+                active[region, k] = label
+
+        # because of padding, some active regions might be overlapping: merge them.
+        # also: fill same speaker gaps shorter than min_duration_off
+        if self.pad_offset > 0.0 or self.pad_onset > 0.0 or self.min_duration_off > 0.0:
+            if self.max_duration < float("inf"):
+                raise NotImplementedError(f"This would break current max_duration param")
+            active = active.support(collar=self.min_duration_off)
+
+        # remove tracks shorter than min_duration_on
+        if self.min_duration_on > 0:
+            for segment, track in list(active.itertracks()):
+                if segment.duration < self.min_duration_on:
+                    del active[segment, track]
+
+        return active
+
+
+class VoiceActivitySegmentation(VoiceActivityDetection):
+    def __init__(
+            self,
+            segmentation: PipelineModel = "pyannote/segmentation",
+            fscore: bool = False,
+            use_auth_token: Union[Text, None] = None,
+            **inference_kwargs,
+    ):
+
+        super().__init__(segmentation=segmentation, fscore=fscore, use_auth_token=use_auth_token, **inference_kwargs)
+
+    def apply(self, file: AudioFile, hook: Optional[Callable] = None) -> Annotation:
+        """Apply voice activity detection
+
+        Parameters
+        ----------
+        file : AudioFile
+            Processed file.
+        hook : callable, optional
+            Hook called after each major step of the pipeline with the following
+            signature: hook("step_name", step_artefact, file=file)
+
+        Returns
+        -------
+        speech : Annotation
+            Speech regions.
+        """
+
+        # setup hook (e.g. for debugging purposes)
+        hook = self.setup_hook(file, hook=hook)
+
+        # apply segmentation model (only if needed)
+        # output shape is (num_chunks, num_frames, 1)
+        if self.training:
+            if self.CACHED_SEGMENTATION in file:
+                segmentations = file[self.CACHED_SEGMENTATION]
+            else:
+                segmentations = self._segmentation(file)
+                file[self.CACHED_SEGMENTATION] = segmentations
+        else:
+            segmentations: SlidingWindowFeature = self._segmentation(file)
+
+        return segmentations
+
+
+class Pyannote(Vad):
+
+    def __init__(self, device, use_auth_token=None, model_fp=None, **kwargs):
+        print(">>Performing voice activity detection using Pyannote...")
+        super().__init__(kwargs['vad_onset'])
+        self.vad_pipeline = load_vad_model(device, use_auth_token=use_auth_token, model_fp=model_fp)
+
+    def __call__(self, audio: AudioFile, **kwargs):
+        return self.vad_pipeline(audio)
+
+    @staticmethod
+    def preprocess_audio(audio):
+        return torch.from_numpy(audio).unsqueeze(0)
+
+    @staticmethod
+    def merge_chunks(segments,
+                     chunk_size,
+                     onset: float = 0.5,
+                     offset: Optional[float] = None,
+                     ):
+        assert chunk_size > 0
+        binarize = Binarize(max_duration=chunk_size, onset=onset, offset=offset)
+        segments = binarize(segments)
+        segments_list = []
+        for speech_turn in segments.get_timeline():
+            segments_list.append(SegmentX(speech_turn.start, speech_turn.end, "UNKNOWN"))
+
+        if len(segments_list) == 0:
+            print("No active speech found in audio")
+            return []
+        assert segments_list, "segments_list is empty."
+        return Vad.merge_chunks(segments_list, chunk_size, onset, offset)
+
+
+================================================
+File: whisperx/vads/silero.py
+================================================
+from io import IOBase
+from pathlib import Path
+from typing import Mapping, Text
+from typing import Optional
+from typing import Union
+
+import torch
+
+from whisperx.diarize import Segment as SegmentX
+from whisperx.vads.vad import Vad
+
+AudioFile = Union[Text, Path, IOBase, Mapping]
+
+
+class Silero(Vad):
+    # check again default values
+    def __init__(self, **kwargs):
+        print(">>Performing voice activity detection using Silero...")
+        super().__init__(kwargs['vad_onset'])
+
+        self.vad_onset = kwargs['vad_onset']
+        self.chunk_size = kwargs['chunk_size']
+        self.vad_pipeline, vad_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                                      model='silero_vad',
+                                                      force_reload=False,
+                                                      onnx=False,
+                                                      trust_repo=True)
+        (self.get_speech_timestamps, _, self.read_audio, _, _) = vad_utils
+
+    def __call__(self, audio: AudioFile, **kwargs):
+        """use silero to get segments of speech"""
+        # Only accept 16000 Hz for now.
+        # Note: Silero models support both 8000 and 16000 Hz. Although other values are not directly supported,
+        # multiples of 16000 (e.g. 32000 or 48000) are cast to 16000 inside of the JIT model!
+        sample_rate = audio["sample_rate"]
+        if sample_rate != 16000:
+            raise ValueError("Only 16000Hz sample rate is allowed")
+
+        timestamps = self.get_speech_timestamps(audio["waveform"],
+                                                model=self.vad_pipeline,
+                                                sampling_rate=sample_rate,
+                                                max_speech_duration_s=self.chunk_size,
+                                                threshold=self.vad_onset
+                                                # min_silence_duration_ms = self.min_duration_off/1000
+                                                # min_speech_duration_ms = self.min_duration_on/1000
+                                                # ...
+                                                # See silero documentation for full option list
+                                                )
+        return [SegmentX(i['start'] / sample_rate, i['end'] / sample_rate, "UNKNOWN") for i in timestamps]
+
+    @staticmethod
+    def preprocess_audio(audio):
+        return audio
+
+    @staticmethod
+    def merge_chunks(segments_list,
+                     chunk_size,
+                     onset: float = 0.5,
+                     offset: Optional[float] = None,
+                     ):
+        assert chunk_size > 0
+        if len(segments_list) == 0:
+            print("No active speech found in audio")
+            return []
+        assert segments_list, "segments_list is empty."
+        return Vad.merge_chunks(segments_list, chunk_size, onset, offset)
+
+
+================================================
+File: whisperx/vads/vad.py
+================================================
+from typing import Optional
+
+import pandas as pd
+from pyannote.core import Annotation, Segment
+
+
+class Vad:
+    def __init__(self, vad_onset):
+        if not (0 < vad_onset < 1):
+            raise ValueError(
+                "vad_onset is a decimal value between 0 and 1."
+            )
+
+    @staticmethod
+    def preprocess_audio(audio):
+        pass
+
+    # keep merge_chunks as static so it can be also used by manually assigned vad_model (see 'load_model')
+    @staticmethod
+    def merge_chunks(segments,
+                     chunk_size,
+                     onset: float,
+                     offset: Optional[float]):
+        """
+         Merge operation described in paper
+         """
+        curr_end = 0
+        merged_segments = []
+        seg_idxs: list[tuple]= []
+        speaker_idxs: list[Optional[str]] = []
+
+        curr_start = segments[0].start
+        for seg in segments:
+            if seg.end - curr_start > chunk_size and curr_end - curr_start > 0:
+                merged_segments.append({
+                    "start": curr_start,
+                    "end": curr_end,
+                    "segments": seg_idxs,
+                })
+                curr_start = seg.start
+                seg_idxs = []
+                speaker_idxs = []
+            curr_end = seg.end
+            seg_idxs.append((seg.start, seg.end))
+            speaker_idxs.append(seg.speaker)
+        # add final
+        merged_segments.append({
+            "start": curr_start,
+            "end": curr_end,
+            "segments": seg_idxs,
+        })
+
+        return merged_segments
+
+    # Unused function
+    @staticmethod
+    def merge_vad(vad_arr, pad_onset=0.0, pad_offset=0.0, min_duration_off=0.0, min_duration_on=0.0):
+        active = Annotation()
+        for k, vad_t in enumerate(vad_arr):
+            region = Segment(vad_t[0] - pad_onset, vad_t[1] + pad_offset)
+            active[region, k] = 1
+
+        if pad_offset > 0.0 or pad_onset > 0.0 or min_duration_off > 0.0:
+            active = active.support(collar=min_duration_off)
+
+        # remove tracks shorter than min_duration_on
+        if min_duration_on > 0:
+            for segment, track in list(active.itertracks()):
+                if segment.duration < min_duration_on:
+                    del active[segment, track]
+
+        active = active.for_json()
+        active_segs = pd.DataFrame([x['segment'] for x in active['content']])
+        return active_segs
+
+
+================================================
+File: .github/FUNDING.yml
+================================================
+custom: https://www.buymeacoffee.com/maxhbain
+
+
+================================================
+File: .github/workflows/build-and-release.yml
+================================================
+name: Build and release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install build
+
+      - name: Build wheels
+        run: python -m build --wheel
+
+      - name: Release to Github
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+      - name: Publish package to PyPi
+        uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+
+================================================
+File: .github/workflows/python-compatibility.yml
+================================================
+name: Python Compatibility Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Test import
+        run: |
+          python -c "import whisperx; print('Successfully imported whisperx')"
+
+
+================================================
+File: .github/workflows/tmp.yml
+================================================
+name: Python Compatibility Test (PyPi)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: |
+          pip install whisperx
+
+      - name: Print packages
+        run: |
+          pip list
+
+      - name: Test import
+        run: |
+          python -c "import whisperx; print('Successfully imported whisperx')"
+
+
