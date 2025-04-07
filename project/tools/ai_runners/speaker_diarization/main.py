@@ -1,4 +1,5 @@
 import os
+from faster_whisper import download_model
 import whisperx
 import gc
 import torch
@@ -61,7 +62,7 @@ class SpeakerDiarizationAgent(BaseAgent):
             
             debug_logger.debug(f"Model device: {self.device}, compute_type: {self.compute_type}")
             debug_logger.debug("Loading WhisperX model")
-            model = whisperx.load_model("large-v3", self.device, compute_type=self.compute_type)
+            model = whisperx.load_model("large-v3", self.device, compute_type=self.compute_type, )
             debug_logger.debug("WhisperX model loaded successfully")
             
             debug_logger.debug(f"Loading audio from path: {audio_path}")
